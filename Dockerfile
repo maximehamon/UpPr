@@ -12,5 +12,5 @@ COPY app/ ./app/
 # Install dependencies
 RUN uv sync --frozen --no-dev
 
-# Run the app
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Run the app (Render sets PORT env var)
+CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
