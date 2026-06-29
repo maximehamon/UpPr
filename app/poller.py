@@ -4,7 +4,14 @@ import logging
 from datetime import datetime, timedelta
 from app.db import get_db, get_setting, set_setting
 from app.apify_client import start_scrape, get_run_status, fetch_dataset
-from app.slack_notifier import send_slack_message, format_scrape_complete_blocks
+from app.slack_notifier import (
+    send_slack_message,
+    send_slack_interactive,
+    format_scrape_complete_blocks,
+    format_job_alert_blocks,
+    format_morning_recap_blocks,
+)
+from app.job_scorer import score_job
 
 logger = logging.getLogger(__name__)
 
@@ -94,25 +101,57 @@ async def poll_scrape(
     if already_seen > 0:
         logger.info(f"poll_scrape {scrape_id}: filtered {already_seen} already-seen jobs, {len(new_results)} new")
 
-    # Save to DB
+    # Score jobs and sort by score (highest first)
+    min_budget = int(await get_setting("min_budget", "0"))
+    min_hourly_rate = int(await get_setting("min_hourly_rate", "0"))
+    score_settings = {"min_budget": min_budget, "min_hourly_rate": min_hourly_rate}
+
+    scored_jobs = []
+    for job in new_results:
+        score, details = score_job(job, score_settings)
+        job["_score"] = score
+        job["_score_details"] = details
+        scored_jobs.append(job)
+
+    scored_jobs.sort(key=lambda j: j.get("_score", 0), reverse=True)
+
+    # Save to DB (scored + sorted)
     await db.execute(
         "UPDATE scrapes SET status='completed', result_count=?, new_count=?, results_json=? WHERE id=?",
-        (len(results), len(new_results), json.dumps(new_results), scrape_id),
+        (len(results), len(scored_jobs), json.dumps(scored_jobs), scrape_id),
     )
     await db.commit()
     await db.close()
 
-    # Send Slack notification
+    # Smart alerts: instant for high-priority, batch for morning recap
     slack_url = await get_setting("slack_webhook_url", "")
     if slack_url:
+        instant_threshold = int(await get_setting("instant_alert_threshold", "75"))
+        high_jobs = [j for j in scored_jobs if j.get("_score", 0) >= instant_threshold]
+        normal_jobs = [j for j in scored_jobs if j.get("_score", 0) < instant_threshold]
+
+        # Send instant alerts for high-priority jobs (max 3 to avoid spam)
+        for i, job in enumerate(high_jobs[:3]):
+            text, blocks = format_job_alert_blocks(
+                job, job["_score"], job["_score_details"],
+                scrape_id, i, app_url=await get_setting("app_base_url", ""),
+            )
+            await send_slack_interactive(slack_url, text, actions=[])  # buttons in blocks
+
+        # Send summary for all jobs
         keyword_str = ", ".join(keywords[:3])
         if len(keywords) > 3:
             keyword_str += f" +{len(keywords) - 3} more"
-        await send_slack_message(
-            slack_url,
-            f"🔍 {len(new_results)} new jobs for [{keyword_str}] (scraped {len(results)} total, {already_seen} already seen)",
-            blocks=format_scrape_complete_blocks(keywords, len(new_results), len(results)),
-        )
+
+        if len(scored_jobs) > 0:
+            summary_text = f"🔍 {len(scored_jobs)} new jobs for [{keyword_str}] — {len(high_jobs)} high priority"
+            blocks = format_scrape_complete_blocks(keywords, len(scored_jobs), len(results))
+            await send_slack_message(slack_url, summary_text, blocks=blocks)
+        else:
+            await send_slack_message(
+                slack_url,
+                f"🔍 No new jobs for [{keyword_str}] (scraped {len(results)} total, {already_seen} already seen)",
+            )
 
 
 async def run_hourly_scrape():
@@ -156,3 +195,14 @@ async def run_hourly_scrape():
     # Run the poller in background
     asyncio.create_task(poll_scrape(scrape_id, keywords, max_jobs, job_type))
     logger.info(f"run_hourly_scrape: created scrape #{scrape_id}")
+
+
+async def cleanup_seen_jobs():
+    """Remove seen_jobs entries older than 30 days to prevent unbounded growth."""
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM seen_jobs WHERE first_seen_at < datetime('now', '-30 days')"
+    )
+    await db.commit()
+    await db.close()
+    logger.info("cleanup_seen_jobs: removed entries older than 30 days")

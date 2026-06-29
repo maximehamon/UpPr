@@ -59,6 +59,50 @@
     </div>
 </section>
 
+<section class="card">
+    <h2>🎯 Job Quality Scoring</h2>
+    <p class="muted">Set minimum thresholds to filter out low-quality jobs. Jobs are scored 0-100 based on budget, client history, and competition.</p>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="min-budget">Min Fixed Budget (USD)</label>
+            <input type="number" id="min-budget" value="0" min="0" placeholder="0 = no minimum">
+        </div>
+        <div class="form-group">
+            <label for="min-hourly-rate">Min Hourly Rate (USD/hr)</label>
+            <input type="number" id="min-hourly-rate" value="0" min="0" placeholder="0 = no minimum">
+        </div>
+    </div>
+    <div class="form-group">
+        <label for="instant-alert-threshold">Instant Alert Threshold (score ≥ this → immediate Slack alert)</label>
+        <input type="number" id="instant-alert-threshold" value="75" min="0" max="100">
+        <small class="muted">Jobs scoring below this are batched into a morning recap instead of instant alerts.</small>
+    </div>
+</section>
+
+<section class="card">
+    <h2>📋 Notion Integration</h2>
+    <p class="muted">Save jobs to a Notion database for tracking and review on mobile.</p>
+    <div class="form-group">
+        <label for="notion-api-key">Notion API Key</label>
+        <input type="password" id="notion-api-key" placeholder="secret_...">
+        <small class="muted">Get one at <a href="https://notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></small>
+    </div>
+    <div class="form-group">
+        <label for="notion-database-id">Notion Database ID</label>
+        <input type="text" id="notion-database-id" placeholder="a1b2c3d4e5f6...">
+        <small class="muted">Copy from the database URL: notion.so/workspace/<strong>a1b2c3d4e5f6...</strong></small>
+    </div>
+</section>
+
+<section class="card">
+    <h2>🔗 App URL</h2>
+    <p class="muted">The base URL of this app (used for links in Slack messages).</p>
+    <div class="form-group">
+        <label for="app-base-url">App Base URL</label>
+        <input type="text" id="app-base-url" placeholder="https://your-app.fly.dev">
+    </div>
+</section>
+
 <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
 <span id="save-status" class="muted"></span>
 
@@ -78,6 +122,12 @@ async function loadSettings() {
         $('#auto-keywords').value = s.auto_keywords || '';
         $('#auto-job-type').value = s.auto_job_type || 'hourly';
         $('#auto-max-jobs').value = s.auto_max_jobs || '50';
+        $('#min-budget').value = s.min_budget || '0';
+        $('#min-hourly-rate').value = s.min_hourly_rate || '0';
+        $('#instant-alert-threshold').value = s.instant_alert_threshold || '75';
+        $('#notion-api-key').value = s.notion_api_key || '';
+        $('#notion-database-id').value = s.notion_database_id || '';
+        $('#app-base-url').value = s.app_base_url || 'http://localhost:8000';
     } catch (err) {
         toast('Failed to load settings: ' + err.message, 'error');
     }
@@ -95,6 +145,12 @@ async function saveSettings() {
                 auto_keywords: $('#auto-keywords').value,
                 auto_job_type: $('#auto-job-type').value,
                 auto_max_jobs: $('#auto-max-jobs').value,
+                min_budget: $('#min-budget').value,
+                min_hourly_rate: $('#min-hourly-rate').value,
+                instant_alert_threshold: $('#instant-alert-threshold').value,
+                notion_api_key: $('#notion-api-key').value,
+                notion_database_id: $('#notion-database-id').value,
+                app_base_url: $('#app-base-url').value,
             }),
         });
         const s = $('#save-status');

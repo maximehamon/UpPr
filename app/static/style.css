@@ -168,6 +168,8 @@ input:focus, textarea:focus, select:focus {
 .badge-completed, .badge-success { background: #0d3321; color: var(--success); }
 .badge-failed { background: #3d1214; color: var(--danger); }
 .badge-draft { background: #1a2332; color: var(--primary); }
+.badge-warning { background: #3d2e00; color: var(--warning); }
+.badge-danger { background: #3d1214; color: var(--danger); }
 
 /* ── Tables ────────────────────────────────────── */
 .table {

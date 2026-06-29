@@ -1,8 +1,9 @@
 import asyncio
 import json
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from urllib.parse import parse_qs
 from app.db import get_db, get_setting, set_setting
 from app.apify_client import start_scrape, get_run_status, fetch_dataset
 from app.proposal_writer import generate_proposal
@@ -45,6 +46,12 @@ class SettingsUpdate(BaseModel):
     auto_keywords: str | None = None
     auto_job_type: str | None = None
     auto_max_jobs: str | None = None
+    min_budget: str | None = None
+    min_hourly_rate: str | None = None
+    instant_alert_threshold: str | None = None
+    notion_api_key: str | None = None
+    notion_database_id: str | None = None
+    app_base_url: str | None = None
 
 
 # ── Page routes ───────────────────────────────────────────────────────
@@ -277,6 +284,12 @@ async def get_settings():
         "auto_keywords": await get_setting("auto_keywords", ""),
         "auto_job_type": await get_setting("auto_job_type", "hourly"),
         "auto_max_jobs": await get_setting("auto_max_jobs", "50"),
+        "min_budget": await get_setting("min_budget", "0"),
+        "min_hourly_rate": await get_setting("min_hourly_rate", "0"),
+        "instant_alert_threshold": await get_setting("instant_alert_threshold", "75"),
+        "notion_api_key": await get_setting("notion_api_key", ""),
+        "notion_database_id": await get_setting("notion_database_id", ""),
+        "app_base_url": await get_setting("app_base_url", "http://localhost:8000"),
     }
 
 
@@ -296,6 +309,18 @@ async def update_settings(req: SettingsUpdate):
         await set_setting("auto_job_type", req.auto_job_type)
     if req.auto_max_jobs is not None:
         await set_setting("auto_max_jobs", req.auto_max_jobs)
+    if req.min_budget is not None:
+        await set_setting("min_budget", req.min_budget)
+    if req.min_hourly_rate is not None:
+        await set_setting("min_hourly_rate", req.min_hourly_rate)
+    if req.instant_alert_threshold is not None:
+        await set_setting("instant_alert_threshold", req.instant_alert_threshold)
+    if req.notion_api_key is not None:
+        await set_setting("notion_api_key", req.notion_api_key)
+    if req.notion_database_id is not None:
+        await set_setting("notion_database_id", req.notion_database_id)
+    if req.app_base_url is not None:
+        await set_setting("app_base_url", req.app_base_url)
 
     return await get_settings()
 
@@ -331,3 +356,162 @@ async def clear_seen_jobs():
     await db.commit()
     await db.close()
     return {"ok": True, "message": "Cleared seen jobs history"}
+
+
+# ── Notion Integration ────────────────────────────────────────────────
+
+@router.post("/api/jobs/{scrape_id}/{job_index}/save-to-notion")
+async def save_job_to_notion(scrape_id: int, job_index: int):
+    """Save a specific job to Notion."""
+    db = await get_db()
+    row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
+    scrape = await row.fetchone()
+    await db.close()
+
+    if not scrape:
+        raise HTTPException(404, "Scrape not found")
+
+    results_json = scrape["results_json"] if hasattr(scrape, 'results_json') else scrape[10]
+    if not results_json:
+        raise HTTPException(400, "No results in this scrape")
+
+    try:
+        results = json.loads(results_json)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(500, "Invalid results data")
+
+    if job_index >= len(results):
+        raise HTTPException(404, "Job index out of range")
+
+    job = results[job_index]
+    score = job.get("_score", 0)
+
+    from app.notion_sync import save_job_to_notion, is_configured
+    if not is_configured():
+        raise HTTPException(400, "Notion not configured. Set NOTION_API_KEY and NOTION_DATABASE_ID in settings.")
+
+    page_id = await save_job_to_notion(job, score, scrape_id)
+    if page_id:
+        return {"ok": True, "notion_page_id": page_id}
+    else:
+        raise HTTPException(502, "Failed to save to Notion")
+
+
+# ── Slack Interactive Webhook Handler ─────────────────────────────────
+
+@router.post("/api/slack/interactive")
+async def slack_interactive(payload: str = Form(None)):
+    """Handle Slack interactive payloads (button clicks).
+
+    Actions:
+    - generate_proposal:{scrape_id}:{job_index} → creates proposal
+    - dismiss_job:{scrape_id}:{job_index} → marks job as dismissed
+    """
+    if not payload:
+        raise HTTPException(400, "No payload")
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON")
+
+    # Handle actions
+    actions = data.get("actions", [])
+    for action in actions:
+        action_id = action.get("action_id", "")
+        value = action.get("value", "")
+
+        if action_id == "generate_proposal":
+            parts = value.split(":")
+            if len(parts) == 2:
+                scrape_id, job_index = int(parts[0]), int(parts[1])
+                # Fetch the job and generate proposal
+                db = await get_db()
+                row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
+                scrape = await row.fetchone()
+                if scrape:
+                    results_json = scrape["results_json"] if hasattr(scrape, 'results_json') else scrape[10]
+                    if results_json:
+                        results = json.loads(results_json)
+                        if job_index < len(results):
+                            job = results[job_index]
+                            from app.proposal_writer import generate_proposal
+                            from app.config import OPENROUTER_API_KEY
+                            my_role = await get_setting("my_role", "freelancer")
+                            my_skills = await get_setting("my_skills", "")
+                            model = await get_setting("model", "openai/gpt-4o")
+                            text = await generate_proposal(job, my_role, my_skills, model)
+                            # Save proposal
+                            cursor = await db.execute(
+                                """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used)
+                                   VALUES (0, ?, ?, ?)""",
+                                (json.dumps(job), text, model),
+                            )
+                            await db.commit()
+                            # Notify Slack
+                            slack_url = await get_setting("slack_webhook_url", "")
+                            if slack_url:
+                                from app.slack_notifier import format_proposal_ready_blocks
+                                await send_slack_message(
+                                    slack_url,
+                                    f"✍️ Proposal drafted for: {job.get('title', 'Untitled')}",
+                                    blocks=format_proposal_ready_blocks(
+                                        job.get("title", "Untitled"),
+                                        job.get("budget", "Unknown") or "Unknown",
+                                        text[:300],
+                                    ),
+                                )
+                await db.close()
+
+        elif action_id == "dismiss_job":
+            # Just acknowledge — the job stays in DB but won't be highlighted
+            pass
+
+    return {"ok": True}
+
+
+# ── Health & Maintenance ──────────────────────────────────────────────
+
+@router.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    db = await get_db()
+
+    # Check DB connection
+    try:
+        await db.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    # Get seen_jobs count
+    row = await db.execute("SELECT COUNT(*) as cnt FROM seen_jobs")
+    seen_count = (await row.fetchone())["cnt"] if db_ok else 0
+
+    # Get consecutive failures
+    row = await db.execute(
+        "SELECT COUNT(*) as cnt FROM scrapes WHERE status='failed' AND created_at > datetime('now', '-24 hours')"
+    )
+    recent_failures = (await row.fetchone())["cnt"] if db_ok else 0
+
+    await db.close()
+
+    # Check Notion config
+    from app.notion_sync import is_configured as notion_configured
+
+    return {
+        "status": "healthy" if db_ok else "unhealthy",
+        "db_connected": db_ok,
+        "seen_jobs_count": seen_count,
+        "recent_failures_24h": recent_failures,
+        "notion_configured": notion_configured(),
+        "auto_keywords_configured": bool(await get_setting("auto_keywords", "")),
+    }
+
+
+@router.post("/api/cleanup")
+async def run_cleanup():
+    """Run maintenance cleanup (seen_jobs older than 30 days)."""
+    from app.poller import cleanup_seen_jobs
+    await cleanup_seen_jobs()
+    return {"ok": True, "message": "Cleanup completed"}

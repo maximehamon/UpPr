@@ -21,3 +21,7 @@ ACTOR_ID = "neatrat~upwork-job-scraper"
 PROPOSAL_MODEL = "openai/gpt-4o"
 DEFAULT_MY_ROLE = "freelancer"
 DEFAULT_MY_SKILLS = "the required technologies"
+
+# ── Notion (override via Settings page) ────────────────────────────────
+NOTION_API_KEY=os.getenv("NOTION_API_KEY", "")
+NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
