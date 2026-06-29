@@ -4,9 +4,6 @@
 app = "upwork-pipeline"
 primary_region = "iad"
 
-[build]
-  builder = "paketobuildpacks/python"
-
 [env]
   PORT = "8080"
   PYTHON_VERSION = "3.11"
