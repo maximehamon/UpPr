@@ -1,8 +1,11 @@
 import asyncio
 import json
+import logging
 from app.db import get_db, get_setting
 from app.apify_client import start_scrape, get_run_status, fetch_dataset
 from app.slack_notifier import send_slack_message, format_scrape_complete_blocks
+
+logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 10
 MAX_WAIT = 600
@@ -21,9 +24,11 @@ async def poll_scrape(
     try:
         run = await start_scrape(keywords, max_jobs, job_type)
         run_id = run["run_id"]
-    except Exception:
+    except Exception as e:
+        logger.error(f"poll_scrape {scrape_id}: start_scrape failed: {e}")
         await db.execute(
-            "UPDATE scrapes SET status='failed' WHERE id=?", (scrape_id,)
+            "UPDATE scrapes SET status='failed', result_count=0, results_json='[]', error_message=? WHERE id=?",
+            (str(e), scrape_id),
         )
         await db.commit()
         await db.close()
@@ -44,7 +49,8 @@ async def poll_scrape(
 
         try:
             status = await get_run_status(run_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"poll_scrape {scrape_id}: get_run_status failed: {e}")
             continue
 
         if status["status"] == "SUCCEEDED":
@@ -61,7 +67,8 @@ async def poll_scrape(
     # Fetch results
     try:
         results = await fetch_dataset(run_id)
-    except Exception:
+    except Exception as e:
+        logger.error(f"poll_scrape {scrape_id}: fetch_dataset failed: {e}")
         results = []
 
     # Save to DB

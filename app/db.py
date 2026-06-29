@@ -27,7 +27,8 @@ async def _ensure_tables(db: aiosqlite.Connection):
             status TEXT DEFAULT 'pending',
             apify_run_id TEXT,
             result_count INTEGER DEFAULT 0,
-            results_json TEXT
+            results_json TEXT,
+            error_message TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS proposals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

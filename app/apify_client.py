@@ -1,6 +1,9 @@
+import logging
 import httpx
 import asyncio
 from app.config import APIFY_API_KEY, APIFY_BASE_URL, ACTOR_ID
+
+logger = logging.getLogger(__name__)
 
 HEADERS = {"Authorization": f"Bearer {APIFY_API_KEY}", "Content-Type": "application/json"}
 
@@ -10,9 +13,11 @@ async def start_scrape(
 ) -> dict:
     """Start an Apify actor run. Returns {run_id, status}."""
     input_data = {
-        "searchTerms": keywords,
-        "maxJobs": max_jobs,
-        "jobType": job_type,
+        "query": keywords[0] if keywords else "",
+        "jobType": [job_type],
+        "pagesToScrape": min(max_jobs // 50 + 1, 10),
+        "perPage": 50,
+        "sort": "newest",
     }
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
@@ -20,6 +25,8 @@ async def start_scrape(
             headers=HEADERS,
             json=input_data,
         )
+        if resp.status_code >= 400:
+            logger.error(f"Apify start_scrape HTTP {resp.status_code}: {resp.text}")
         resp.raise_for_status()
         data = resp.json()["data"]
         return {"run_id": data["id"], "status": data["status"]}
@@ -31,6 +38,8 @@ async def get_run_status(run_id: str) -> dict:
         resp = await client.get(
             f"{APIFY_BASE_URL}/acts/{ACTOR_ID}/runs/{run_id}", headers=HEADERS
         )
+        if resp.status_code >= 400:
+            logger.error(f"Apify get_run_status HTTP {resp.status_code}: {resp.text}")
         resp.raise_for_status()
         data = resp.json()["data"]
         return {
@@ -48,6 +57,8 @@ async def fetch_dataset(run_id: str, limit: int = 200) -> list[dict]:
             f"?limit={limit}",
             headers=HEADERS,
         )
+        if resp.status_code >= 400:
+            logger.error(f"Apify fetch_dataset HTTP {resp.status_code}: {resp.text}")
         resp.raise_for_status()
         return resp.json()
 

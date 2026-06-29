@@ -123,6 +123,7 @@ async def get_scrape(scrape_id: int):
     else:
         result["results"] = []
 
+    # Expose error_message if present (don't strip it)
     return result
 
 

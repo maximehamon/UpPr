@@ -1,7 +1,13 @@
+import logging
+import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app.routes import router
-import os
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 app = FastAPI(title="Upwork Proposal Pipeline")
 
