@@ -40,7 +40,13 @@
 
 <!-- Scrape list -->
 <section class="card">
-    <h2>Scrapes</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>Scrapes</h2>
+        <div>
+            <button class="btn btn-sm" onclick="triggerAutoScrape()">⏰ Run Auto-Scrape Now</button>
+            <button class="btn btn-sm" onclick="clearSeenJobs()">🗑 Clear History</button>
+        </div>
+    </div>
     <div id="scrapes-list">
         <p class="muted">Loading...</p>
     </div>
@@ -129,10 +135,11 @@ async function loadScrapes() {
                     <tr>
                         <td>#${s.id}</td>
                         <td>${(s.keywords || []).slice(0, 3).join(', ')}${s.keywords?.length > 3 ? '...' : ''}</td>
-                        <td>${s.result_count || '-'}</td>
-                        <td><span class="badge badge-${s.status}">${s.status}</span></td>
+                        <td>${s.new_count !== undefined && s.new_count !== null ? `<strong>${s.new_count} new</strong> / ${s.result_count || 0}` : (s.result_count || '-')}</td>
+                        <td><span class="badge badge-${s.status}">${s.status}${s.error_message ? ' ⚠️' : ''}</span></td>
                         <td>${s.created_at?.replace('T', ' ').slice(0, 19) || ''}</td>
                         <td>
+                            ${s.error_message ? `<span class="muted" title="${s.error_message}">❌</span> ` : ''}
                             ${s.status === 'completed' ? `<button class="btn btn-sm" onclick="viewResults(${s.id})">📋 View</button>` : ''}
                             ${s.status === 'running' || s.status === 'pending' ? `<button class="btn btn-sm" onclick="refreshScrape(${s.id})">🔄 Refresh</button>` : ''}
                         </td>
@@ -210,6 +217,28 @@ async function refreshScrape(id) {
         if (res.status === 'completed') {
             viewResults(id);
         }
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Trigger auto-scrape ---
+async function triggerAutoScrape() {
+    try {
+        const res = await api('/api/cron/trigger', { method: 'POST' });
+        toast('Auto-scrape triggered!', 'success');
+        loadScrapes();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Clear seen jobs ---
+async function clearSeenJobs() {
+    if (!confirm('Clear all seen jobs? Next scrape will show all jobs again.')) return;
+    try {
+        await api('/api/seen-jobs/clear', { method: 'POST' });
+        toast('Seen jobs cleared!', 'info');
     } catch (err) {
         toast(err.message, 'error');
     }

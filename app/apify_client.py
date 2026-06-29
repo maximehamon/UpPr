@@ -18,6 +18,7 @@ async def start_scrape(
         "pagesToScrape": min(max_jobs // 50 + 1, 10),
         "perPage": 50,
         "sort": "newest",
+        "maxJobAge": {"type": "HOURS", "amount": 2},
     }
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(

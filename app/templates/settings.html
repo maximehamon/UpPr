@@ -37,6 +37,28 @@
     </div>
 </section>
 
+<section class="card">
+    <h2>⏰ Hourly Auto-Scrape</h2>
+    <p class="muted">Automatically scrape for new jobs every hour. Only new jobs (not seen before) will be shown.</p>
+    <div class="form-group">
+        <label for="auto-keywords">Keywords (comma-separated)</label>
+        <input type="text" id="auto-keywords" placeholder="e.g. python developer, web scraping, react">
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="auto-job-type">Job Type</label>
+            <select id="auto-job-type">
+                <option value="hourly">Hourly</option>
+                <option value="fixed">Fixed Price</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="auto-max-jobs">Max Jobs</label>
+            <input type="number" id="auto-max-jobs" value="50" min="1" max="500">
+        </div>
+    </div>
+</section>
+
 <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
 <span id="save-status" class="muted"></span>
 
@@ -53,6 +75,9 @@ async function loadSettings() {
         $('#my-skills').value = s.my_skills || '';
         $('#model').value = s.model || '';
         $('#slack-webhook').value = s.slack_webhook_url || '';
+        $('#auto-keywords').value = s.auto_keywords || '';
+        $('#auto-job-type').value = s.auto_job_type || 'hourly';
+        $('#auto-max-jobs').value = s.auto_max_jobs || '50';
     } catch (err) {
         toast('Failed to load settings: ' + err.message, 'error');
     }
@@ -67,6 +92,9 @@ async function saveSettings() {
                 my_skills: $('#my-skills').value,
                 model: $('#model').value,
                 slack_webhook_url: $('#slack-webhook').value,
+                auto_keywords: $('#auto-keywords').value,
+                auto_job_type: $('#auto-job-type').value,
+                auto_max_jobs: $('#auto-max-jobs').value,
             }),
         });
         const s = $('#save-status');

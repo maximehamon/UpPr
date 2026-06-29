@@ -44,12 +44,19 @@ def format_scrape_complete_blocks(
     if len(keywords) > 5:
         kw_str += f" +{len(keywords) - 5} more"
 
+    if job_count == 0:
+        header = "🔍 Upwork Scrape — No New Jobs"
+        results_text = f"No new jobs found for [{_escape_slack(kw_str)}]"
+    else:
+        header = f"🔍 Upwork Scrape — {job_count} New Jobs!"
+        results_text = f"{job_count} new jobs (scraped {result_count} total, duplicates removed)"
+
     blocks = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"🔍 Upwork Scrape Complete — {job_count} jobs found",
+                "text": header,
             },
         },
         {
@@ -58,13 +65,13 @@ def format_scrape_complete_blocks(
                 {"type": "mrkdwn", "text": f"*Keywords:*\n{_escape_slack(kw_str)}"},
                 {
                     "type": "mrkdwn",
-                    "text": f"*Results:*\n{job_count} jobs scraped ({result_count} in dataset)",
+                    "text": f"*Results:*\n{results_text}",
                 },
             ],
         },
     ]
 
-    if app_url:
+    if app_url and job_count > 0:
         blocks.append(
             {
                 "type": "actions",

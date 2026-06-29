@@ -42,6 +42,9 @@ class SettingsUpdate(BaseModel):
     my_skills: str | None = None
     model: str | None = None
     slack_webhook_url: str | None = None
+    auto_keywords: str | None = None
+    auto_job_type: str | None = None
+    auto_max_jobs: str | None = None
 
 
 # ── Page routes ───────────────────────────────────────────────────────
@@ -271,6 +274,9 @@ async def get_settings():
         "my_skills": await get_setting("my_skills", ""),
         "model": await get_setting("model", "openai/gpt-4o"),
         "slack_webhook_url": await get_setting("slack_webhook_url", ""),
+        "auto_keywords": await get_setting("auto_keywords", ""),
+        "auto_job_type": await get_setting("auto_job_type", "hourly"),
+        "auto_max_jobs": await get_setting("auto_max_jobs", "50"),
     }
 
 
@@ -284,6 +290,12 @@ async def update_settings(req: SettingsUpdate):
         await set_setting("model", req.model)
     if req.slack_webhook_url is not None:
         await set_setting("slack_webhook_url", req.slack_webhook_url)
+    if req.auto_keywords is not None:
+        await set_setting("auto_keywords", req.auto_keywords)
+    if req.auto_job_type is not None:
+        await set_setting("auto_job_type", req.auto_job_type)
+    if req.auto_max_jobs is not None:
+        await set_setting("auto_max_jobs", req.auto_max_jobs)
 
     return await get_settings()
 
@@ -299,3 +311,23 @@ async def config_status():
         "openrouter_configured": bool(OPENROUTER_API_KEY),
         "slack_configured": bool(await get_setting("slack_webhook_url", "")),
     }
+
+
+# ── Cron / Auto-scrape ───────────────────────────────────────────────
+
+@router.post("/api/cron/trigger")
+async def trigger_cron_scrape():
+    """Manually trigger the hourly auto-scrape (used by cron jobs)."""
+    from app.poller import run_hourly_scrape
+    await run_hourly_scrape()
+    return {"ok": True, "message": "Auto-scrape triggered"}
+
+
+@router.post("/api/seen-jobs/clear")
+async def clear_seen_jobs():
+    """Clear the seen_jobs table so future scrapes show all jobs again."""
+    db = await get_db()
+    await db.execute("DELETE FROM seen_jobs")
+    await db.commit()
+    await db.close()
+    return {"ok": True, "message": "Cleared seen jobs history"}
