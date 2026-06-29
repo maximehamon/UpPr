@@ -1,7 +1,10 @@
 import aiosqlite
 import os
 
-DB_PATH = os.path.join(os.environ.get("RENDER_DISK_PATH", "."), "data.db")
+DB_PATH = os.environ.get("RENDER_DISK_PATH") or os.environ.get("FLY_DATA_PATH", ".")
+if DB_PATH and not DB_PATH.endswith("/"):
+    DB_PATH = DB_PATH + "/"
+DB_PATH = DB_PATH + "data.db"
 
 async def get_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(DB_PATH)

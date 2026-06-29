@@ -1,0 +1,34 @@
+# Fly.io deployment config
+# Free tier: 3 shared VMs, 256MB RAM each, 3GB persistent volume
+
+app = "upwork-pipeline"
+primary_region = "iad"
+
+[build]
+  builder = "paketobuildpacks/python"
+
+[env]
+  PORT = "8080"
+  PYTHON_VERSION = "3.11"
+  FLY_DATA_PATH = "/data"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[mounts]
+  source = "data"
+  destination = "/data"
