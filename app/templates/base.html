@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Upwork Pipeline{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🔍 Upwork Pipeline</div>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/proposals" class="nav-link">Proposals</a>
+            <a href="/settings" class="nav-link">Settings</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <div id="toast-container"></div>
+
+    <script>
+        // Shared utilities
+        function toast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = `toast toast-${type}`;
+            el.textContent = message;
+            container.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0';
+                setTimeout(() => el.remove(), 300);
+            }, 3500);
+        }
+
+        async function api(url, opts = {}) {
+            const res = await fetch(url, {
+                headers: { 'Content-Type': 'application/json', ...opts.headers },
+                ...opts,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: res.statusText }));
+                throw new Error(err.detail || 'Request failed');
+            }
+            return res.json();
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Settings — Upwork Pipeline{% endblock %}
+
+{% block content %}
+
+<h1>Settings</h1>
+
+<section class="card">
+    <h2>Proposal Defaults</h2>
+    <p class="muted">These values are used when generating proposals. You can override them per-proposal.</p>
+    <form id="settings-form">
+        <div class="form-group">
+            <label for="my-role">Your Role</label>
+            <input type="text" id="my-role" placeholder="e.g. Python developer, Web scraper, Full-stack engineer">
+        </div>
+        <div class="form-group">
+            <label for="my-skills">Your Skills</label>
+            <textarea id="my-skills" rows="2" placeholder="e.g. Python, FastAPI, web scraping, React, PostgreSQL"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="model">OpenRouter Model</label>
+            <input type="text" id="model" placeholder="openai/gpt-4o">
+            <small class="muted">See <a href="https://openrouter.ai/models" target="_blank">available models</a></small>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Notifications</h2>
+    <div class="form-group">
+        <label for="slack-webhook">Slack Incoming Webhook URL</label>
+        <input type="password" id="slack-webhook" placeholder="https://hooks.slack.com/services/T.../B.../...">
+        <small class="muted">
+            <a href="https://api.slack.com/messaging/webhooks" target="_blank">Create a Slack webhook</a> —
+            you'll get a URL like <code>https://hooks.slack.com/services/TXXXXX/BXXXXX/XXXXXXXX</code>
+        </small>
+    </div>
+</section>
+
+<button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+<span id="save-status" class="muted"></span>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (s) => document.querySelector(s);
+
+async function loadSettings() {
+    try {
+        const s = await api('/api/settings');
+        $('#my-role').value = s.my_role || '';
+        $('#my-skills').value = s.my_skills || '';
+        $('#model').value = s.model || '';
+        $('#slack-webhook').value = s.slack_webhook_url || '';
+    } catch (err) {
+        toast('Failed to load settings: ' + err.message, 'error');
+    }
+}
+
+async function saveSettings() {
+    try {
+        await api('/api/settings', {
+            method: 'POST',
+            body: JSON.stringify({
+                my_role: $('#my-role').value,
+                my_skills: $('#my-skills').value,
+                model: $('#model').value,
+                slack_webhook_url: $('#slack-webhook').value,
+            }),
+        });
+        const s = $('#save-status');
+        s.textContent = '✅ Saved!';
+        setTimeout(() => s.textContent = '', 2000);
+    } catch (err) {
+        toast('Failed to save: ' + err.message, 'error');
+    }
+}
+
+loadSettings();
+</script>
+{% endblock %}

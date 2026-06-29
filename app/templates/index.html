@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Upwork Pipeline{% endblock %}
+
+{% block content %}
+
+<h1>Dashboard</h1>
+
+<!-- Scrape form -->
+<section class="card">
+    <h2>Find Upwork Jobs</h2>
+    <form id="scrape-form">
+        <div class="form-group">
+            <label for="keywords">Search Keywords (one per line or comma-separated)</label>
+            <textarea id="keywords" rows="3" placeholder="python developer&#10;web scraping&#10;react freelancer"></textarea>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="max-jobs">Max Jobs</label>
+                <input type="number" id="max-jobs" value="50" min="1" max="500">
+            </div>
+            <div class="form-group">
+                <label for="job-type">Job Type</label>
+                <select id="job-type">
+                    <option value="hourly">Hourly</option>
+                    <option value="fixed">Fixed Price</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="scrape-btn">🚀 Start Scrape</button>
+        <span id="cost-estimate" class="muted"></span>
+    </form>
+</section>
+
+<!-- Status bar -->
+<div id="config-status" class="config-bar">
+    <span class="status-dot" id="apify-status"></span> Apify
+    <span class="status-dot" id="openrouter-status"></span> OpenRouter
+    <span class="status-dot" id="slack-status"></span> Slack
+</div>
+
+<!-- Scrape list -->
+<section class="card">
+    <h2>Scrapes</h2>
+    <div id="scrapes-list">
+        <p class="muted">Loading...</p>
+    </div>
+</section>
+
+<!-- Results detail panel (hidden by default) -->
+<section class="card" id="results-panel" style="display:none">
+    <div class="panel-header">
+        <h2>Results — <span id="results-title"></span></h2>
+        <button class="btn btn-sm" onclick="document.getElementById('results-panel').style.display='none'">✕ Close</button>
+    </div>
+    <div class="results-meta">
+        <span id="results-count"></span> jobs found ·
+        Keywords: <span id="results-keywords"></span>
+    </div>
+    <div id="results-grid"></div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+// --- Config status check ---
+async function checkConfig() {
+    try {
+        const s = await api('/api/config-status');
+        setDot('#apify-status', s.apify_configured);
+        setDot('#openrouter-status', s.openrouter_configured);
+        setDot('#slack-status', s.slack_configured);
+    } catch (e) {}
+}
+
+function setDot(sel, ok) {
+    const el = $(sel);
+    el.className = 'status-dot ' + (ok ? 'status-ok' : 'status-missing');
+    el.title = ok ? 'Configured' : 'Not configured';
+}
+
+// --- Scrape form ---
+$('#scrape-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = $('#keywords').value.trim();
+    if (!raw) return;
+
+    const keywords = raw.includes('\n')
+        ? raw.split('\n').map(k => k.trim()).filter(Boolean)
+        : raw.split(',').map(k => k.trim()).filter(Boolean);
+
+    const maxJobs = parseInt($('#max-jobs').value) || 50;
+    const jobType = $('#job-type').value;
+
+    const btn = $('#scrape-btn');
+    btn.disabled = true;
+    btn.textContent = 'Starting...';
+
+    try {
+        const res = await api('/api/scrapes', {
+            method: 'POST',
+            body: JSON.stringify({ keywords, max_jobs: maxJobs, job_type: jobType }),
+        });
+        toast('Scrape started! Polling in background...', 'success');
+        $('#keywords').value = '';
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🚀 Start Scrape';
+    loadScrapes();
+});
+
+// --- Load scrapes ---
+async function loadScrapes() {
+    try {
+        const scrapes = await api('/api/scrapes');
+        const html = scrapes.length === 0
+            ? '<p class="muted">No scrapes yet. Start one above!</p>'
+            : `<table class="table">
+                <thead><tr>
+                    <th>ID</th><th>Keywords</th><th>Jobs</th><th>Status</th><th>Created</th><th></th>
+                </tr></thead>
+                <tbody>${scrapes.map(s => `
+                    <tr>
+                        <td>#${s.id}</td>
+                        <td>${(s.keywords || []).slice(0, 3).join(', ')}${s.keywords?.length > 3 ? '...' : ''}</td>
+                        <td>${s.result_count || '-'}</td>
+                        <td><span class="badge badge-${s.status}">${s.status}</span></td>
+                        <td>${s.created_at?.replace('T', ' ').slice(0, 19) || ''}</td>
+                        <td>
+                            ${s.status === 'completed' ? `<button class="btn btn-sm" onclick="viewResults(${s.id})">📋 View</button>` : ''}
+                            ${s.status === 'running' || s.status === 'pending' ? `<button class="btn btn-sm" onclick="refreshScrape(${s.id})">🔄 Refresh</button>` : ''}
+                        </td>
+                    </tr>`).join('')}</tbody></table>`;
+        $('#scrapes-list').innerHTML = html;
+    } catch (err) {
+        $('#scrapes-list').innerHTML = `<p class="error">Failed to load: ${err.message}</p>`;
+    }
+}
+
+// --- View results ---
+async function viewResults(id) {
+    try {
+        const scrape = await api(`/api/scrapes/${id}`);
+        const results = scrape.results || [];
+
+        $('#results-title').textContent = `Scrape #${id}`;
+        $('#results-count').textContent = results.length;
+        $('#results-keywords').textContent = (scrape.keywords || []).join(', ');
+
+        const grid = $('#results-grid');
+        if (results.length === 0) {
+            grid.innerHTML = '<p class="muted">No jobs found in this scrape.</p>';
+        } else {
+            grid.innerHTML = results.map((job, i) => `
+                <div class="job-card card">
+                    <h3>${job.title || 'Untitled'}</h3>
+                    <div class="job-meta">
+                        <span class="badge">${job.jobType || 'N/A'}</span>
+                        <span>💰 ${job.budget || 'Not specified'}</span>
+                        <span>📍 ${job.clientCountry || 'Unknown'}</span>
+                    </div>
+                    <p class="job-desc">${(job.description || '').slice(0, 300)}${(job.description || '').length > 300 ? '...' : ''}</p>
+                    <button class="btn btn-secondary" onclick="generateProposal(${id}, ${i})">✍️ Generate Proposal</button>
+                </div>
+            `).join('');
+        }
+
+        $('#results-panel').style.display = 'block';
+        $('#results-panel').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Generate proposal ---
+async function generateProposal(scrapeId, jobIndex) {
+    try {
+        const scrape = await api(`/api/scrapes/${scrapeId}`);
+        const job = scrape.results[jobIndex];
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        const res = await api('/api/proposals', {
+            method: 'POST',
+            body: JSON.stringify({ job_data: job }),
+        });
+
+        toast('Proposal generated!', 'success');
+        btn.textContent = '✅ Drafted';
+    } catch (err) {
+        toast(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = '✍️ Generate Proposal';
+    }
+}
+
+// --- Refresh scrape ---
+async function refreshScrape(id) {
+    try {
+        const res = await api(`/api/scrapes/${id}/refresh`, { method: 'POST' });
+        toast(`Status: ${res.status}`, 'info');
+        loadScrapes();
+        if (res.status === 'completed') {
+            viewResults(id);
+        }
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Init ---
+checkConfig();
+loadScrapes();
+// Auto-refresh scrapes list every 15s
+setInterval(loadScrapes, 15000);
+</script>
+{% endblock %}

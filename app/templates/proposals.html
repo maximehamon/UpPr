@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Proposals — Upwork Pipeline{% endblock %}
+
+{% block content %}
+
+<h1>Proposals</h1>
+
+<section class="card">
+    <div id="proposals-list">
+        <p class="muted">Loading...</p>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (s) => document.querySelector(s);
+
+async function loadProposals() {
+    try {
+        const proposals = await api('/api/proposals');
+        if (proposals.length === 0) {
+            $('#proposals-list').innerHTML = '<p class="muted">No proposals yet. Go to <a href="/">Dashboard</a> to generate one.</p>';
+            return;
+        }
+        $('#proposals-list').innerHTML = proposals.map(p => `
+            <div class="proposal-card card">
+                <div class="proposal-header">
+                    <div>
+                        <h3>${(p.job_data || {}).title || 'Untitled Job'}</h3>
+                        <span class="badge badge-${p.status}">${p.status}</span>
+                        <span class="muted">· ${p.model_used || 'unknown model'} · ${p.created_at?.replace('T', ' ').slice(0, 19)}</span>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm" onclick="copyProposal(${p.id})">📋 Copy</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteProposal(${p.id})">🗑 Delete</button>
+                    </div>
+                </div>
+                <div class="proposal-body">
+                    <h4>Job Details</h4>
+                    <p><strong>Budget:</strong> ${(p.job_data || {}).budget || 'N/A'} ·
+                       <strong>Type:</strong> ${(p.job_data || {}).jobType || 'N/A'} ·
+                       <strong>Country:</strong> ${(p.job_data || {}).clientCountry || 'N/A'}</p>
+                    <h4>Proposal</h4>
+                    <pre class="proposal-text">${(p.proposal_text || '')}</pre>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        $('#proposals-list').innerHTML = `<p class="error">Failed to load: ${err.message}</p>`;
+    }
+}
+
+async function copyProposal(id) {
+    try {
+        const res = await api(`/api/proposals/${id}`);
+        await navigator.clipboard.writeText(res.proposal_text || '');
+        toast('Proposal copied to clipboard!', 'success');
+    } catch (err) {
+        // Fallback for non-HTTPS
+        const res = await api(`/api/proposals/${id}`);
+        const ta = document.createElement('textarea');
+        ta.value = res.proposal_text || '';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        toast('Proposal copied!', 'success');
+    }
+}
+
+async function deleteProposal(id) {
+    if (!confirm('Delete this proposal?')) return;
+    try {
+        await api(`/api/proposals/${id}`, { method: 'DELETE' });
+        toast('Proposal deleted', 'info');
+        loadProposals();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+loadProposals();
+</script>
+{% endblock %}
