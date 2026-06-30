@@ -1,7 +1,7 @@
 # Fly.io deployment config
 # Free tier: 3 shared VMs, 256MB RAM each, 3GB persistent volume
 
-app = "upwork-pipeline"
+app = "uppr-2vcvuq"
 primary_region = "iad"
 
 [env]
