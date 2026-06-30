@@ -52,6 +52,7 @@ class SettingsUpdate(BaseModel):
     notion_api_key: str | None = None
     notion_database_id: str | None = None
     app_base_url: str | None = None
+    ab_test_strategy: str | None = None
 
 
 # ── Page routes ───────────────────────────────────────────────────────
@@ -189,6 +190,7 @@ async def refresh_scrape(scrape_id: int):
 @router.post("/api/proposals")
 async def create_proposal(req: ProposalRequest):
     from app.config import OPENROUTER_API_KEY
+    from app.proposal_templates import select_template, record_template_outcome
 
     my_role = req.my_role or await get_setting("my_role", "freelancer")
     my_skills = req.my_skills or await get_setting("my_skills", "")
@@ -197,18 +199,39 @@ async def create_proposal(req: ProposalRequest):
     if not OPENROUTER_API_KEY:
         raise HTTPException(400, "OPENROUTER_API_KEY not configured")
 
+    # Try to select a template (A/B testing)
+    db = await get_db()
+    strategy = await get_setting("ab_test_strategy", "random")
+    template = await select_template(db, strategy=strategy)
+    await db.close()
+
+    # Generate with template or defaults
     try:
-        text = await generate_proposal(req.job_data, my_role, my_skills, model)
+        if template:
+            text = await generate_proposal(
+                req.job_data, my_role, my_skills, model,
+                custom_system_prompt=template.get("system_prompt"),
+                custom_user_template=template.get("user_template"),
+                temperature=template.get("temperature", 0.7),
+                max_tokens=template.get("max_tokens", 600),
+            )
+        else:
+            text = await generate_proposal(req.job_data, my_role, my_skills, model)
     except Exception as e:
         raise HTTPException(502, f"OpenRouter API error: {e}")
 
     db = await get_db()
     cursor = await db.execute(
-        """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used)
-           VALUES (0, ?, ?, ?)""",
-        (json.dumps(req.job_data), text, model),
+        """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used, template_id)
+           VALUES (0, ?, ?, ?, ?)""",
+        (json.dumps(req.job_data), text, model, template.get("id") if template else None),
     )
     proposal_id = cursor.lastrowid
+
+    # Record template usage
+    if template:
+        await record_template_outcome(db, template["id"], "sent")
+
     await db.commit()
     await db.close()
 
@@ -226,7 +249,7 @@ async def create_proposal(req: ProposalRequest):
             )
         )
 
-    return {"proposal_id": proposal_id, "text": text, "model_used": model}
+    return {"proposal_id": proposal_id, "text": text, "model_used": model, "template_id": template.get("id") if template else None}
 
 
 @router.get("/api/proposals")
@@ -290,6 +313,7 @@ async def get_settings():
         "notion_api_key": await get_setting("notion_api_key", ""),
         "notion_database_id": await get_setting("notion_database_id", ""),
         "app_base_url": await get_setting("app_base_url", "http://localhost:8000"),
+        "ab_test_strategy": await get_setting("ab_test_strategy", "random"),
     }
 
 
@@ -321,6 +345,8 @@ async def update_settings(req: SettingsUpdate):
         await set_setting("notion_database_id", req.notion_database_id)
     if req.app_base_url is not None:
         await set_setting("app_base_url", req.app_base_url)
+    if req.ab_test_strategy is not None:
+        await set_setting("ab_test_strategy", req.ab_test_strategy)
 
     return await get_settings()
 
@@ -515,3 +541,76 @@ async def run_cleanup():
     from app.poller import cleanup_seen_jobs
     await cleanup_seen_jobs()
     return {"ok": True, "message": "Cleanup completed"}
+
+
+# ── Analytics ─────────────────────────────────────────────────────────
+
+@router.get("/api/analytics")
+async def analytics_api():
+    """Get dashboard analytics data."""
+    from app.analytics import get_dashboard_stats
+    db = await get_db()
+    stats = await get_dashboard_stats(db)
+    await db.close()
+    return stats
+
+
+@router.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request):
+    return TemplateResponse(_jinja_env.get_template("analytics.html"), {"request": request})
+
+
+# ── Proposal Templates ────────────────────────────────────────────────
+
+from app.proposal_templates import (
+    get_templates, add_template, update_template, delete_template,
+    select_template, get_ab_test_results,
+)
+
+@router.get("/api/templates")
+async def list_templates():
+    """List all proposal templates."""
+    db = await get_db()
+    templates = await get_templates(db)
+    await db.close()
+    return templates
+
+
+@router.post("/api/templates")
+async def create_template_api(req: dict):
+    """Create a new proposal template."""
+    db = await get_db()
+    template = await add_template(db, req)
+    await db.close()
+    return template
+
+
+@router.patch("/api/templates/{template_id}")
+async def update_template_api(template_id: str, req: dict):
+    """Update a proposal template."""
+    db = await get_db()
+    template = await update_template(db, template_id, req)
+    await db.close()
+    if not template:
+        raise HTTPException(404, "Template not found")
+    return template
+
+
+@router.delete("/api/templates/{template_id}")
+async def delete_template_api(template_id: str):
+    """Delete a proposal template."""
+    db = await get_db()
+    ok = await delete_template(db, template_id)
+    await db.close()
+    if not ok:
+        raise HTTPException(404, "Template not found")
+    return {"ok": True}
+
+
+@router.get("/api/templates/ab-results")
+async def ab_results():
+    """Get A/B test results for all templates."""
+    db = await get_db()
+    results = await get_ab_test_results(db)
+    await db.close()
+    return results

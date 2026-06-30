@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Upwork Pipeline{% endblock %}
+
+{% block content %}
+
+<h1>📊 Analytics</h1>
+
+<!-- Summary cards -->
+<div class="analytics-grid">
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-total-scrapes">-</div>
+        <div class="stat-label">Total Scrapes</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-total-jobs">-</div>
+        <div class="stat-label">Jobs Scraped</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-new-jobs">-</div>
+        <div class="stat-label">New Jobs</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-proposals">-</div>
+        <div class="stat-label">Proposals</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-avg-score">-</div>
+        <div class="stat-label">Avg Score</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value" id="stat-success-rate">-</div>
+        <div class="stat-label">Success Rate</div>
+    </div>
+</div>
+
+<!-- Today's summary -->
+<section class="card">
+    <h2>📅 Today</h2>
+    <div class="analytics-grid">
+        <div><strong>Scrapes:</strong> <span id="today-scrapes">-</span></div>
+        <div><strong>Jobs Found:</strong> <span id="today-jobs">-</span></div>
+        <div><strong>New Jobs:</strong> <span id="today-new">-</span></div>
+        <div><strong>Proposals:</strong> <span id="today-proposals">-</span></div>
+    </div>
+</section>
+
+<!-- Jobs per day chart -->
+<section class="card">
+    <h2>📈 New Jobs Per Day (Last 14 Days)</h2>
+    <div id="chart-jobs-per-day" class="chart-container"></div>
+</section>
+
+<!-- Score distribution -->
+<section class="card">
+    <h2>🎯 Score Distribution</h2>
+    <div id="chart-scores" class="chart-container"></div>
+</section>
+
+<div class="analytics-row">
+    <!-- Top Keywords -->
+    <section class="card">
+        <h2>🏷️ Top Keywords</h2>
+        <div id="top-keywords"></div>
+    </section>
+
+    <!-- Top Countries -->
+    <section class="card">
+        <h2>🌍 Top Client Countries</h2>
+        <div id="top-countries"></div>
+    </section>
+</div>
+
+<!-- Budget Distribution -->
+<section class="card">
+    <h2>💰 Budget Distribution</h2>
+    <div id="chart-budget" class="chart-container"></div>
+</section>
+
+<!-- Model Usage -->
+<section class="card">
+    <h2>🤖 Models Used</h2>
+    <div id="models-usage"></div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (s) => document.querySelector(s);
+
+async function loadAnalytics() {
+    try {
+        const stats = await api('/api/analytics');
+
+        // Summary cards
+        $('#stat-total-scrapes').textContent = stats.total_scrapes;
+        $('#stat-total-jobs').textContent = stats.total_jobs_scraped;
+        $('#stat-new-jobs').textContent = stats.total_new_jobs;
+        $('#stat-proposals').textContent = stats.total_proposals;
+        $('#stat-avg-score').textContent = stats.avg_score || '-';
+        $('#stat-success-rate').textContent = stats.success_rate + '%';
+
+        // Today
+        $('#today-scrapes').textContent = stats.scrapes_today;
+        $('#today-jobs').textContent = stats.jobs_today;
+        $('#today-new').textContent = stats.new_jobs_today;
+        $('#today-proposals').textContent = stats.proposals_today;
+
+        // Jobs per day bar chart
+        renderJobsPerDay(stats.jobs_per_day);
+
+        // Score distribution
+        renderScoreDistribution(stats.score_distribution);
+
+        // Top keywords
+        renderTopKeywords(stats.top_keywords);
+
+        // Top countries
+        renderTopCountries(stats.top_countries);
+
+        // Budget distribution
+        renderBudgetDistribution(stats.budget_distribution);
+
+        // Models usage
+        renderModelsUsage(stats.models_usage);
+
+    } catch (err) {
+        console.error('Failed to load analytics:', err);
+    }
+}
+
+function renderJobsPerDay(data) {
+    const container = $('#chart-jobs-per-day');
+    if (!data || data.length === 0) {
+        container.innerHTML = '<p class="muted">No data yet</p>';
+        return;
+    }
+    const max = Math.max(...data.map(d => d.count), 1);
+    const barHeight = 120;
+
+    let html = '<div class="bar-chart">';
+    data.forEach(d => {
+        const height = Math.max((d.count / max) * barHeight, 2);
+        const label = d.date.slice(5); // MM-DD
+        html += `
+            <div class="bar-item" title="${d.date}: ${d.count} new jobs">
+                <div class="bar" style="height:${height}px">${d.count > 0 ? d.count : ''}</div>
+                <div class="bar-label">${label}</div>
+            </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderScoreDistribution(dist) {
+    const container = $('#chart-scores');
+    if (!dist) {
+        container.innerHTML = '<p class="muted">No data yet</p>';
+        return;
+    }
+    const total = (dist.high || 0) + (dist.medium || 0) + (dist.low || 0);
+    if (total === 0) {
+        container.innerHTML = '<p class="muted">No scored jobs yet</p>';
+        return;
+    }
+
+    const highPct = ((dist.high || 0) / total * 100).toFixed(0);
+    const medPct = ((dist.medium || 0) / total * 100).toFixed(0);
+    const lowPct = ((dist.low || 0) / total * 100).toFixed(0);
+
+    container.innerHTML = `
+        <div class="score-bar">
+            <div class="score-segment score-high" style="width:${highPct}%">🟢 ${dist.high || 0}</div>
+            <div class="score-segment score-medium" style="width:${medPct}%">🟡 ${dist.medium || 0}</div>
+            <div class="score-segment score-low" style="width:${lowPct}%">🔴 ${dist.low || 0}</div>
+        </div>
+        <div class="score-legend">
+            <span>🟢 High (≥75): ${highPct}%</span>
+            <span>🟡 Medium (50-74): ${medPct}%</span>
+            <span>🔴 Low (&lt;50): ${lowPct}%</span>
+        </div>`;
+}
+
+function renderTopKeywords(keywords) {
+    const container = $('#top-keywords');
+    if (!keywords || keywords.length === 0) {
+        container.innerHTML = '<p class="muted">No data yet</p>';
+        return;
+    }
+    const max = keywords[0][1];
+    container.innerHTML = keywords.map(([kw, count]) => {
+        const pct = (count / max * 100).toFixed(0);
+        return `<div class="list-bar">
+            <span class="list-bar-label">${kw}</span>
+            <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
+            <span class="list-bar-count">${count}</span>
+        </div>`;
+    }).join('');
+}
+
+function renderTopCountries(countries) {
+    const container = $('#top-countries');
+    if (!countries || countries.length === 0) {
+        container.innerHTML = '<p class="muted">No data yet</p>';
+        return;
+    }
+    const max = countries[0][1];
+    container.innerHTML = countries.map(([country, count]) => {
+        const pct = (count / max * 100).toFixed(0);
+        return `<div class="list-bar">
+            <span class="list-bar-label">${country}</span>
+            <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
+            <span class="list-bar-count">${count}</span>
+        </div>`;
+    }).join('');
+}
+
+function renderBudgetDistribution(dist) {
+    const container = $('#chart-budget');
+    if (!dist || Object.keys(dist).length === 0) {
+        container.innerHTML = '<p class="muted">No data yet</p>';
+        return;
+    }
+    const labels = {
+        "under_100": "< $100",
+        "100_500": "$100-500",
+        "500_1000": "$500-1K",
+        "1000_5000": "$1K-5K",
+        "over_5000": "> $5K"
+    };
+    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+    if (total === 0) {
+        container.innerHTML = '<p class="muted">No budget data yet</p>';
+        return;
+    }
+
+    container.innerHTML = Object.entries(dist).map(([key, count]) => {
+        const pct = (count / total * 100).toFixed(0);
+        return `<div class="list-bar">
+            <span class="list-bar-label">${labels[key] || key}</span>
+            <div class="list-bar-track"><div class="list-bar-fill budget" style="width:${pct}%"></div></div>
+            <span class="list-bar-count">${count} (${pct}%)</span>
+        </div>`;
+    }).join('');
+}
+
+function renderModelsUsage(models) {
+    const container = $('#models-usage');
+    if (!models || models.length === 0) {
+        container.innerHTML = '<p class="muted">No proposals yet</p>';
+        return;
+    }
+    const max = models[0].count;
+    container.innerHTML = models.map(m => {
+        const pct = (m.count / max * 100).toFixed(0);
+        return `<div class="list-bar">
+            <span class="list-bar-label">${m.model}</span>
+            <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
+            <span class="list-bar-count">${m.count}</span>
+        </div>`;
+    }).join('');
+}
+
+loadAnalytics();
+</script>
+{% endblock %}

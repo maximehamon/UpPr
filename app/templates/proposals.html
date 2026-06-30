@@ -5,7 +5,72 @@
 
 <h1>Proposals</h1>
 
+<!-- A/B Test Results -->
 <section class="card">
+    <h2>🧪 A/B Test Results</h2>
+    <p class="muted">Which proposal templates perform best? Response rate = clients who replied.</p>
+    <div id="ab-results">
+        <p class="muted">Loading...</p>
+    </div>
+</section>
+
+<!-- Template Management -->
+<section class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2>📝 Proposal Templates</h2>
+        <button class="btn btn-primary btn-sm" onclick="showTemplateForm()">+ New Template</button>
+    </div>
+    <p class="muted">Create different proposal personas/styles and A/B test them against each other.</p>
+    <div id="templates-list">
+        <p class="muted">Loading...</p>
+    </div>
+</section>
+
+<!-- Template Form (hidden) -->
+<section class="card" id="template-form" style="display:none">
+    <h2 id="template-form-title">New Template</h2>
+    <input type="hidden" id="template-id">
+    <div class="form-group">
+        <label for="template-name">Template Name</label>
+        <input type="text" id="template-name" placeholder="e.g. Python Developer, Web Scraper, Full-Stack">
+    </div>
+    <div class="form-group">
+        <label for="template-role">Your Role</label>
+        <input type="text" id="template-role" placeholder="e.g. Senior Python Developer">
+    </div>
+    <div class="form-group">
+        <label for="template-skills">Your Skills</label>
+        <textarea id="template-skills" rows="2" placeholder="e.g. Python, FastAPI, PostgreSQL, Docker"></textarea>
+    </div>
+    <div class="form-group">
+        <label for="template-system">System Prompt</label>
+        <textarea id="template-system" rows="4" placeholder="You are an expert Upwork proposal writer..."></textarea>
+        <small class="muted">The instructions given to the AI about how to write proposals.</small>
+    </div>
+    <div class="form-group">
+        <label for="template-user">User Template</label>
+        <textarea id="template-user" rows="4" placeholder="Write a proposal for this Upwork job:..."></textarea>
+        <small class="muted">Use {title}, {description}, {budget}, {my_role}, {my_skills} as placeholders.</small>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="template-temperature">Temperature (0.0-1.0)</label>
+            <input type="number" id="template-temperature" value="0.7" min="0" max="1" step="0.1">
+        </div>
+        <div class="form-group">
+            <label for="template-max-tokens">Max Tokens</label>
+            <input type="number" id="template-max-tokens" value="600" min="100" max="2000" step="50">
+        </div>
+    </div>
+    <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveTemplate()">💾 Save Template</button>
+        <button class="btn btn-secondary" onclick="hideTemplateForm()">Cancel</button>
+    </div>
+</section>
+
+<!-- Existing Proposals -->
+<section class="card">
+    <h2>📋 Generated Proposals</h2>
     <div id="proposals-list">
         <p class="muted">Loading...</p>
     </div>
@@ -16,6 +81,150 @@
 {% block scripts %}
 <script>
 const $ = (s) => document.querySelector(s);
+
+// ── Templates ────────────────────────────────────────────────────────
+
+async function loadTemplates() {
+    try {
+        const templates = await api('/api/templates');
+        if (templates.length === 0) {
+            $('#templates-list').innerHTML = '<p class="muted">No templates yet. Create one above to start A/B testing!</p>';
+            return;
+        }
+        $('#templates-list').innerHTML = templates.map(t => `
+            <div class="template-card card" style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <h3 style="margin:0">${t.name || 'Untitled'}</h3>
+                        <span class="muted">${t.role || 'No role'} · ${t.skills || 'No skills'}</span>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-sm" onclick="editTemplate('${t.id}')">✏️ Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTemplate('${t.id}')">🗑</button>
+                    </div>
+                </div>
+                <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">
+                    Temp: ${t.temperature || 0.7} · Tokens: ${t.max_tokens || 600} · 
+                    Sent: ${t.stats?.sent || 0} · Responded: ${t.stats?.responded || 0} · Hired: ${t.stats?.hired || 0}
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        $('#templates-list').innerHTML = `<p class="error">Failed to load: ${err.message}</p>`;
+    }
+}
+
+async function loadABResults() {
+    try {
+        const results = await api('/api/templates/ab-results');
+        if (results.length === 0) {
+            $('#ab-results').innerHTML = '<p class="muted">No A/B test data yet. Create proposals with different templates!</p>';
+            return;
+        }
+        $('#ab-results').innerHTML = `
+            <table class="table">
+                <thead><tr>
+                    <th>Template</th><th>Sent</th><th>Responded</th><th>Response Rate</th><th>Hire Rate</th>
+                </tr></thead>
+                <tbody>${results.map(r => `
+                    <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td>${r.sent}</td>
+                        <td>${r.responded}</td>
+                        <td><span class="badge ${r.response_rate > 20 ? 'badge-success' : r.response_rate > 10 ? 'badge-warning' : 'badge-failed'}">${r.response_rate}%</span></td>
+                        <td>${r.hire_rate}%</td>
+                    </tr>`).join('')}</tbody></table>`;
+    } catch (err) {
+        $('#ab-results').innerHTML = `<p class="error">Failed to load: ${err.message}</p>`;
+    }
+}
+
+function showTemplateForm() {
+    $('#template-form').style.display = 'block';
+    $('#template-form-title').textContent = 'New Template';
+    $('#template-id').value = '';
+    $('#template-name').value = '';
+    $('#template-role').value = '';
+    $('#template-skills').value = '';
+    $('#template-system').value = '';
+    $('#template-user').value = '';
+    $('#template-temperature').value = '0.7';
+    $('#template-max-tokens').value = '600';
+    $('#template-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+function hideTemplateForm() {
+    $('#template-form').style.display = 'none';
+}
+
+async function editTemplate(id) {
+    try {
+        const templates = await api('/api/templates');
+        const t = templates.find(x => x.id === id);
+        if (!t) return;
+
+        $('#template-form').style.display = 'block';
+        $('#template-form-title').textContent = 'Edit Template';
+        $('#template-id').value = t.id;
+        $('#template-name').value = t.name || '';
+        $('#template-role').value = t.role || '';
+        $('#template-skills').value = t.skills || '';
+        $('#template-system').value = t.system_prompt || '';
+        $('#template-user').value = t.user_template || '';
+        $('#template-temperature').value = t.temperature || 0.7;
+        $('#template-max-tokens').value = t.max_tokens || 600;
+        $('#template-form').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function saveTemplate() {
+    const id = $('#template-id').value;
+    const data = {
+        name: $('#template-name').value,
+        role: $('#template-role').value,
+        skills: $('#template-skills').value,
+        system_prompt: $('#template-system').value,
+        user_template: $('#template-user').value,
+        temperature: parseFloat($('#template-temperature').value) || 0.7,
+        max_tokens: parseInt($('#template-max-tokens').value) || 600,
+    };
+
+    if (!data.name) {
+        toast('Template name is required', 'error');
+        return;
+    }
+
+    try {
+        if (id) {
+            await api(`/api/templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+            toast('Template updated!', 'success');
+        } else {
+            await api('/api/templates', { method: 'POST', body: JSON.stringify(data) });
+            toast('Template created!', 'success');
+        }
+        hideTemplateForm();
+        loadTemplates();
+        loadABResults();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+async function deleteTemplate(id) {
+    if (!confirm('Delete this template?')) return;
+    try {
+        await api(`/api/templates/${id}`, { method: 'DELETE' });
+        toast('Template deleted', 'info');
+        loadTemplates();
+        loadABResults();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// ── Proposals List ────────────────────────────────────────────────────
 
 async function loadProposals() {
     try {
@@ -31,6 +240,7 @@ async function loadProposals() {
                         <h3>${(p.job_data || {}).title || 'Untitled Job'}</h3>
                         <span class="badge badge-${p.status}">${p.status}</span>
                         <span class="muted">· ${p.model_used || 'unknown model'} · ${p.created_at?.replace('T', ' ').slice(0, 19)}</span>
+                        ${p.template_id ? '<span class="muted">· template: ' + p.template_id + '</span>' : ''}
                     </div>
                     <div>
                         <button class="btn btn-sm" onclick="copyProposal(${p.id})">📋 Copy</button>
@@ -58,7 +268,6 @@ async function copyProposal(id) {
         await navigator.clipboard.writeText(res.proposal_text || '');
         toast('Proposal copied to clipboard!', 'success');
     } catch (err) {
-        // Fallback for non-HTTPS
         const res = await api(`/api/proposals/${id}`);
         const ta = document.createElement('textarea');
         ta.value = res.proposal_text || '';
@@ -81,6 +290,10 @@ async function deleteProposal(id) {
     }
 }
 
+// ── Init ──────────────────────────────────────────────────────────────
+
+loadTemplates();
+loadABResults();
 loadProposals();
 </script>
 {% endblock %}

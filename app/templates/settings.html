@@ -103,6 +103,24 @@
     </div>
 </section>
 
+<section class="card">
+    <h2>🧪 A/B Test Strategy</h2>
+    <p class="muted">How to select a template when generating proposals.</p>
+    <div class="form-group">
+        <label for="ab-test-strategy">Strategy</label>
+        <select id="ab-test-strategy">
+            <option value="random">Random</option>
+            <option value="round_robin">Round Robin</option>
+            <option value="best">Best Performing</option>
+            <option value="ab_test">A/B Test (explore-exploit)</option>
+        </select>
+        <small class="muted">
+            Random: pick randomly. Round Robin: cycle through. Best: pick highest response rate.
+            A/B Test: favor under-tested templates to gather data faster.
+        </small>
+    </div>
+</section>
+
 <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
 <span id="save-status" class="muted"></span>
 
@@ -128,6 +146,7 @@ async function loadSettings() {
         $('#notion-api-key').value = s.notion_api_key || '';
         $('#notion-database-id').value = s.notion_database_id || '';
         $('#app-base-url').value = s.app_base_url || 'http://localhost:8000';
+        $('#ab-test-strategy').value = s.ab_test_strategy || 'random';
     } catch (err) {
         toast('Failed to load settings: ' + err.message, 'error');
     }
@@ -151,6 +170,7 @@ async function saveSettings() {
                 notion_api_key: $('#notion-api-key').value,
                 notion_database_id: $('#notion-database-id').value,
                 app_base_url: $('#app-base-url').value,
+                ab_test_strategy: $('#ab-test-strategy').value,
             }),
         });
         const s = $('#save-status');

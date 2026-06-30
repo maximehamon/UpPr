@@ -8,6 +8,7 @@ HEADERS = {
     "X-Title": "Upwork Proposal Pipeline",
 }
 
+# Default template (fallback when no templates configured)
 PROPOSAL_SYSTEM_PROMPT = """You are an expert Upwork proposal writer. Given a job listing, write a compelling,
 personalized proposal that:
 1. Opens with a specific reference to the client's project
@@ -38,10 +39,17 @@ async def generate_proposal(
     my_role: str = "freelancer",
     my_skills: str = "the required technologies",
     model: str | None = None,
+    custom_system_prompt: str | None = None,
+    custom_user_template: str | None = None,
+    temperature: float = 0.7,
+    max_tokens: int = 600,
 ) -> str:
-    """Generate a proposal for a single job using OpenRouter."""
+    """Generate a proposal for a single job using OpenRouter.
+
+    Supports custom templates (system_prompt + user_template) for A/B testing.
+    """
     desc = job.get("description", "") or ""
-    user_prompt = PROPOSAL_USER_TEMPLATE.format(
+    user_prompt = (custom_user_template or PROPOSAL_USER_TEMPLATE).format(
         title=job.get("title", "Untitled"),
         description=desc[:1500],
         budget=job.get("budget", "Not specified") or "Not specified",
@@ -53,6 +61,8 @@ async def generate_proposal(
         my_skills=my_skills,
     )
 
+    system_prompt = custom_system_prompt or PROPOSAL_SYSTEM_PROMPT
+
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             f"{OPENROUTER_BASE_URL}/chat/completions",
@@ -60,11 +70,11 @@ async def generate_proposal(
             json={
                 "model": model or PROPOSAL_MODEL,
                 "messages": [
-                    {"role": "system", "content": PROPOSAL_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                "temperature": 0.7,
-                "max_tokens": 600,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
             },
         )
         resp.raise_for_status()

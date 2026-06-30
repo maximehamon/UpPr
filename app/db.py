@@ -44,6 +44,7 @@ async def _ensure_tables(db: aiosqlite.Connection):
             status TEXT DEFAULT 'draft',
             proposal_text TEXT,
             model_used TEXT,
+            template_id TEXT,
             FOREIGN KEY (scrape_id) REFERENCES scrapes(id)
         );
         CREATE TABLE IF NOT EXISTS settings (
