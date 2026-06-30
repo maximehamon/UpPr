@@ -73,6 +73,11 @@ async def settings_page(request: Request):
     return TemplateResponse(_jinja_env.get_template("settings.html"), {"request": request})
 
 
+@router.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request):
+    return TemplateResponse(_jinja_env.get_template("analytics.html"), {"request": request})
+
+
 # ── Scrape endpoints ─────────────────────────────────────────────────
 
 
@@ -366,12 +371,21 @@ async def config_status():
 
 # ── Cron / Auto-scrape ───────────────────────────────────────────────
 
+
 @router.post("/api/cron/trigger")
 async def trigger_cron_scrape():
     """Manually trigger the hourly auto-scrape (used by cron jobs)."""
     from app.poller import run_hourly_scrape
     await run_hourly_scrape()
     return {"ok": True, "message": "Auto-scrape triggered"}
+
+
+@router.post("/api/cleanup")
+async def run_cleanup():
+    """Run maintenance cleanup (seen_jobs older than 30 days)."""
+    from app.poller import cleanup_seen_jobs
+    await cleanup_seen_jobs()
+    return {"ok": True, "message": "Cleanup completed"}
 
 
 @router.post("/api/seen-jobs/clear")
@@ -385,6 +399,7 @@ async def clear_seen_jobs():
 
 
 # ── Notion Integration ────────────────────────────────────────────────
+
 
 @router.post("/api/jobs/{scrape_id}/{job_index}/save-to-notion")
 async def save_job_to_notion(scrape_id: int, job_index: int):
@@ -423,144 +438,8 @@ async def save_job_to_notion(scrape_id: int, job_index: int):
         raise HTTPException(502, "Failed to save to Notion")
 
 
-# ── Slack Interactive Webhook Handler ─────────────────────────────────
-
-@router.post("/api/slack/interactive")
-async def slack_interactive(payload: str = Form(None)):
-    """Handle Slack interactive payloads (button clicks).
-
-    Actions:
-    - generate_proposal:{scrape_id}:{job_index} → creates proposal
-    - dismiss_job:{scrape_id}:{job_index} → marks job as dismissed
-    """
-    if not payload:
-        raise HTTPException(400, "No payload")
-
-    try:
-        data = json.loads(payload)
-    except json.JSONDecodeError:
-        raise HTTPException(400, "Invalid JSON")
-
-    # Handle actions
-    actions = data.get("actions", [])
-    for action in actions:
-        action_id = action.get("action_id", "")
-        value = action.get("value", "")
-
-        if action_id == "generate_proposal":
-            parts = value.split(":")
-            if len(parts) == 2:
-                scrape_id, job_index = int(parts[0]), int(parts[1])
-                # Fetch the job and generate proposal
-                db = await get_db()
-                row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
-                scrape = await row.fetchone()
-                if scrape:
-                    results_json = scrape["results_json"] if hasattr(scrape, 'results_json') else scrape[10]
-                    if results_json:
-                        results = json.loads(results_json)
-                        if job_index < len(results):
-                            job = results[job_index]
-                            from app.proposal_writer import generate_proposal
-                            from app.config import OPENROUTER_API_KEY
-                            my_role = await get_setting("my_role", "freelancer")
-                            my_skills = await get_setting("my_skills", "")
-                            model = await get_setting("model", "openai/gpt-4o")
-                            text = await generate_proposal(job, my_role, my_skills, model)
-                            # Save proposal
-                            cursor = await db.execute(
-                                """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used)
-                                   VALUES (0, ?, ?, ?)""",
-                                (json.dumps(job), text, model),
-                            )
-                            await db.commit()
-                            # Notify Slack
-                            slack_url = await get_setting("slack_webhook_url", "")
-                            if slack_url:
-                                from app.slack_notifier import format_proposal_ready_blocks
-                                await send_slack_message(
-                                    slack_url,
-                                    f"✍️ Proposal drafted for: {job.get('title', 'Untitled')}",
-                                    blocks=format_proposal_ready_blocks(
-                                        job.get("title", "Untitled"),
-                                        job.get("budget", "Unknown") or "Unknown",
-                                        text[:300],
-                                    ),
-                                )
-                await db.close()
-
-        elif action_id == "dismiss_job":
-            # Just acknowledge — the job stays in DB but won't be highlighted
-            pass
-
-    return {"ok": True}
-
-
-# ── Health & Maintenance ──────────────────────────────────────────────
-
-@router.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    db = await get_db()
-
-    # Check DB connection
-    try:
-        await db.execute("SELECT 1")
-        db_ok = True
-    except Exception:
-        db_ok = False
-
-    # Get seen_jobs count
-    row = await db.execute("SELECT COUNT(*) as cnt FROM seen_jobs")
-    seen_count = (await row.fetchone())["cnt"] if db_ok else 0
-
-    # Get consecutive failures
-    row = await db.execute(
-        "SELECT COUNT(*) as cnt FROM scrapes WHERE status='failed' AND created_at > datetime('now', '-24 hours')"
-    )
-    recent_failures = (await row.fetchone())["cnt"] if db_ok else 0
-
-    await db.close()
-
-    # Check Notion config
-    from app.notion_sync import is_configured as notion_configured
-
-    return {
-        "status": "healthy" if db_ok else "unhealthy",
-        "db_connected": db_ok,
-        "seen_jobs_count": seen_count,
-        "recent_failures_24h": recent_failures,
-        "notion_configured": notion_configured(),
-        "auto_keywords_configured": bool(await get_setting("auto_keywords", "")),
-    }
-
-
-@router.post("/api/cleanup")
-async def run_cleanup():
-    """Run maintenance cleanup (seen_jobs older than 30 days)."""
-    from app.poller import cleanup_seen_jobs
-    await cleanup_seen_jobs()
-    return {"ok": True, "message": "Cleanup completed"}
-
-
-# ── Analytics ─────────────────────────────────────────────────────────
-
-@router.get("/api/analytics")
-async def analytics_api():
-    """Get dashboard analytics data."""
-    from app.analytics import get_dashboard_stats
-    db = await get_db()
-    stats = await get_dashboard_stats(db)
-    await db.close()
-    return stats
-
-
-@router.get("/analytics", response_class=HTMLResponse)
-async def analytics_page(request: Request):
-    return TemplateResponse(_jinja_env.get_template("analytics.html"), {"request": request})
-
-
 # ── Proposal Templates ────────────────────────────────────────────────
+
 
 from app.proposal_templates import (
     get_templates, add_template, update_template, delete_template,
@@ -614,3 +493,142 @@ async def ab_results():
     results = await get_ab_test_results(db)
     await db.close()
     return results
+
+
+# ── Slack Interactive Webhook Handler ────────────────────────────────
+
+
+@router.post("/api/slack/interactive")
+async def slack_interactive(payload: str = Form(None)):
+    """Handle Slack interactive payloads (button clicks).
+
+    Actions:
+    - generate_proposal:{scrape_id}:{job_index} → creates proposal
+    - dismiss_job:{scrape_id}:{job_index} → marks job as dismissed
+    """
+    if not payload:
+        raise HTTPException(400, "No payload")
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON")
+
+    # Handle actions
+    actions = data.get("actions", [])
+    for action in actions:
+        action_id = action.get("action_id", "")
+        value = action.get("value", "")
+
+        if action_id == "generate_proposal":
+            parts = value.split(":")
+            if len(parts) == 2:
+                scrape_id, job_index = int(parts[0]), int(parts[1])
+                db = None
+                try:
+                    db = await get_db()
+                    row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
+                    scrape = await row.fetchone()
+                    if scrape:
+                        results_json = scrape["results_json"] if hasattr(scrape, 'results_json') else scrape[10]
+                        if results_json:
+                            results = json.loads(results_json)
+                            if job_index < len(results):
+                                job = results[job_index]
+                                from app.proposal_templates import select_template, record_template_outcome
+                                strategy = await get_setting("ab_test_strategy", "random")
+                                template = await select_template(db, strategy=strategy)
+
+                                my_role = await get_setting("my_role", "freelancer")
+                                my_skills = await get_setting("my_skills", "")
+                                model = await get_setting("model", "openai/gpt-4o")
+
+                                if template:
+                                    text = await generate_proposal(
+                                        job, my_role, my_skills, model,
+                                        custom_system_prompt=template.get("system_prompt"),
+                                        custom_user_template=template.get("user_template"),
+                                        temperature=template.get("temperature", 0.7),
+                                        max_tokens=template.get("max_tokens", 600),
+                                    )
+                                else:
+                                    text = await generate_proposal(job, my_role, my_skills, model)
+
+                                await db.execute(
+                                    """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used, template_id)
+                                       VALUES (0, ?, ?, ?, ?)""",
+                                    (json.dumps(job), text, model, template.get("id") if template else None),
+                                )
+                                await db.commit()
+
+                                if template:
+                                    await record_template_outcome(db, template["id"], "sent")
+
+                                slack_url = await get_setting("slack_webhook_url", "")
+                                if slack_url:
+                                    from app.slack_notifier import format_proposal_ready_blocks
+                                    await send_slack_message(
+                                        slack_url,
+                                        f"✍️ Proposal drafted for: {job.get('title', 'Untitled')}",
+                                        blocks=format_proposal_ready_blocks(
+                                            job.get("title", "Untitled"),
+                                            job.get("budget", "Unknown") or "Unknown",
+                                            text[:300],
+                                        ),
+                                    )
+                finally:
+                    if db:
+                        await db.close()
+
+        elif action_id == "dismiss_job":
+            pass
+
+    return {"ok": True}
+
+
+# ── Health & Maintenance ──────────────────────────────────────────────
+
+
+@router.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    db = await get_db()
+
+    # Check database
+    try:
+        cursor = await db.execute("SELECT 1")
+        await cursor.fetchone()
+        db_status = "ok"
+    except Exception as e:
+        db_status = f"error: {str(e)[:100]}"
+
+    # Check seen_jobs count
+    cursor = await db.execute("SELECT COUNT(*) as cnt FROM seen_jobs")
+    seen_count = (await cursor.fetchone())["cnt"]
+
+    # Check recent failures
+    cursor = await db.execute(
+        "SELECT COUNT(*) as cnt FROM scrapes WHERE status='failed' AND created_at > datetime('now', '-24 hours')"
+    )
+    recent_failures = (await cursor.fetchone())["cnt"]
+
+    await db.close()
+
+    from app.notion_sync import is_configured
+    return {
+        "status": "healthy" if db_status == "ok" else "degraded",
+        "database": db_status,
+        "seen_jobs_count": seen_count,
+        "recent_failures_24h": recent_failures,
+        "notion_configured": is_configured(),
+    }
+
+
+@router.get("/api/analytics")
+async def analytics_api():
+    """Get dashboard analytics data."""
+    from app.analytics import get_dashboard_stats
+    db = await get_db()
+    stats = await get_dashboard_stats(db)
+    await db.close()
+    return stats

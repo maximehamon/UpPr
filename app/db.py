@@ -16,7 +16,7 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def _ensure_tables(db: aiosqlite.Connection):
-    """Idempotent table creation — safe to call on every connection."""
+    """Idempotent table creation + migration — safe to call on every connection."""
     await db.executescript("""
         CREATE TABLE IF NOT EXISTS scrapes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +57,17 @@ async def _ensure_tables(db: aiosqlite.Connection):
             ('model', 'openai/gpt-4o'),
             ('slack_webhook_url', '');
     """)
+
+    # Migrations - add missing columns if they don't exist
+    try:
+        # Check if template_id column exists (SQLite doesn't have IF NOT EXISTS for ALTER TABLE)
+        cursor = await db.execute("PRAGMA table_info(proposals)")
+        columns = [row["name"] for row in await cursor.fetchall()]
+        if "template_id" not in columns:
+            await db.execute("ALTER TABLE proposals ADD COLUMN template_id TEXT")
+            await db.commit()
+    except Exception:
+        pass  # Table might have been created fresh, ignore
 
 
 async def init_db():
