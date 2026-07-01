@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Upwork Pipeline{% endblock %}</title>
+    <title>{% block title %}UpPr{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">🔍 Upwork Pipeline</div>
+        <a href="/" class="nav-brand">UpPr</a>
         <div class="nav-links">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/proposals" class="nav-link">Proposals</a>
-            <a href="/analytics" class="nav-link">Analytics</a>
-            <a href="/settings" class="nav-link">Settings</a>
+            <a href="/" class="nav-link{% if active_page == 'dashboard' %} active{% endif %}">Dashboard</a>
+            <a href="/proposals" class="nav-link{% if active_page == 'proposals' %} active{% endif %}">Proposals</a>
+            <a href="/analytics" class="nav-link{% if active_page == 'analytics' %} active{% endif %}">Analytics</a>
+            <a href="/settings" class="nav-link{% if active_page == 'settings' %} active{% endif %}">Settings</a>
         </div>
     </nav>
 
@@ -24,7 +24,16 @@
     <div id="toast-container"></div>
 
     <script>
-        // Shared utilities
+        const $ = (s) => document.querySelector(s);
+        const $$ = (s) => document.querySelectorAll(s);
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
         function toast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const el = document.createElement('div');

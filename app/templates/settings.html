@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Settings — Upwork Pipeline{% endblock %}
+{% block title %}Settings — UpPr{% endblock %}
 
 {% block content %}
 
 <h1>Settings</h1>
 
+<form id="settings-form">
+
 <section class="card">
     <h2>Proposal Defaults</h2>
     <p class="muted">These values are used when generating proposals. You can override them per-proposal.</p>
-    <form id="settings-form">
-        <div class="form-group">
-            <label for="my-role">Your Role</label>
-            <input type="text" id="my-role" placeholder="e.g. Python developer, Web scraper, Full-stack engineer">
-        </div>
-        <div class="form-group">
-            <label for="my-skills">Your Skills</label>
-            <textarea id="my-skills" rows="2" placeholder="e.g. Python, FastAPI, web scraping, React, PostgreSQL"></textarea>
-        </div>
-        <div class="form-group">
-            <label for="model">OpenRouter Model</label>
-            <input type="text" id="model" placeholder="openai/gpt-4o">
-            <small class="muted">See <a href="https://openrouter.ai/models" target="_blank">available models</a></small>
-        </div>
-    </form>
+    <div class="form-group">
+        <label for="my-role">Your Role</label>
+        <input type="text" id="my-role" placeholder="e.g. Python developer, Web scraper, Full-stack engineer">
+    </div>
+    <div class="form-group">
+        <label for="my-skills">Your Skills</label>
+        <textarea id="my-skills" rows="2" placeholder="e.g. Python, FastAPI, web scraping, React, PostgreSQL"></textarea>
+    </div>
+    <div class="form-group">
+        <label for="model">OpenRouter Model</label>
+        <input type="text" id="model" placeholder="openai/gpt-4o">
+        <small class="muted">See <a href="https://openrouter.ai/models" target="_blank">available models</a></small>
+    </div>
 </section>
 
 <section class="card">
@@ -38,7 +38,7 @@
 </section>
 
 <section class="card">
-    <h2>⏰ Hourly Auto-Scrape</h2>
+    <h2>Hourly Auto-Scrape</h2>
     <p class="muted">Automatically scrape for new jobs every hour. Only new jobs (not seen before) will be shown.</p>
     <div class="form-group">
         <label for="auto-keywords">Keywords (comma-separated)</label>
@@ -60,7 +60,7 @@
 </section>
 
 <section class="card">
-    <h2>🎯 Job Quality Scoring</h2>
+    <h2>Job Quality Scoring</h2>
     <p class="muted">Set minimum thresholds to filter out low-quality jobs. Jobs are scored 0-100 based on budget, client history, and competition.</p>
     <div class="form-row">
         <div class="form-group">
@@ -73,14 +73,14 @@
         </div>
     </div>
     <div class="form-group">
-        <label for="instant-alert-threshold">Instant Alert Threshold (score ≥ this → immediate Slack alert)</label>
+        <label for="instant-alert-threshold">Instant Alert Threshold (score >= this sends immediate Slack alert)</label>
         <input type="number" id="instant-alert-threshold" value="75" min="0" max="100">
         <small class="muted">Jobs scoring below this are batched into a morning recap instead of instant alerts.</small>
     </div>
 </section>
 
 <section class="card">
-    <h2>📋 Notion Integration</h2>
+    <h2>Notion Integration</h2>
     <p class="muted">Save jobs to a Notion database for tracking and review on mobile.</p>
     <div class="form-group">
         <label for="notion-api-key">Notion API Key</label>
@@ -95,7 +95,7 @@
 </section>
 
 <section class="card">
-    <h2>🔗 App URL</h2>
+    <h2>App URL</h2>
     <p class="muted">The base URL of this app (used for links in Slack messages).</p>
     <div class="form-group">
         <label for="app-base-url">App Base URL</label>
@@ -104,7 +104,7 @@
 </section>
 
 <section class="card">
-    <h2>🧪 A/B Test Strategy</h2>
+    <h2>A/B Test Strategy</h2>
     <p class="muted">How to select a template when generating proposals.</p>
     <div class="form-group">
         <label for="ab-test-strategy">Strategy</label>
@@ -121,14 +121,15 @@
     </div>
 </section>
 
-<button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+<button type="button" class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
 <span id="save-status" class="muted"></span>
+
+</form>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
-const $ = (s) => document.querySelector(s);
 
 async function loadSettings() {
     try {
@@ -174,7 +175,7 @@ async function saveSettings() {
             }),
         });
         const s = $('#save-status');
-        s.textContent = '✅ Saved!';
+        s.textContent = 'Saved!';
         setTimeout(() => s.textContent = '', 2000);
     } catch (err) {
         toast('Failed to save: ' + err.message, 'error');

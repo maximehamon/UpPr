@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Upwork Pipeline{% endblock %}
+{% block title %}Dashboard — UpPr{% endblock %}
 
 {% block content %}
 
@@ -26,25 +26,24 @@
                 </select>
             </div>
         </div>
-        <button type="submit" class="btn btn-primary" id="scrape-btn">🚀 Start Scrape</button>
-        <span id="cost-estimate" class="muted"></span>
+        <button type="submit" class="btn btn-primary" id="scrape-btn">Start Scrape</button>
     </form>
 </section>
 
 <!-- Status bar -->
 <div id="config-status" class="config-bar">
-    <span class="status-dot" id="apify-status"></span> Apify
-    <span class="status-dot" id="openrouter-status"></span> OpenRouter
-    <span class="status-dot" id="slack-status"></span> Slack
+    <span class="config-item"><span class="status-dot" id="apify-status"></span> Apify</span>
+    <span class="config-item"><span class="status-dot" id="openrouter-status"></span> OpenRouter</span>
+    <span class="config-item"><span class="status-dot" id="slack-status"></span> Slack</span>
 </div>
 
 <!-- Scrape list -->
 <section class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
+    <div class="flex-between">
         <h2>Scrapes</h2>
-        <div>
-            <button class="btn btn-sm" onclick="triggerAutoScrape()">⏰ Run Auto-Scrape Now</button>
-            <button class="btn btn-sm" onclick="clearSeenJobs()">🗑 Clear History</button>
+        <div class="flex-gap">
+            <button class="btn btn-sm" onclick="triggerAutoScrape()">Run Auto-Scrape</button>
+            <button class="btn btn-sm" onclick="clearSeenJobs()">Clear History</button>
         </div>
     </div>
     <div id="scrapes-list">
@@ -56,7 +55,7 @@
 <section class="card" id="results-panel" style="display:none">
     <div class="panel-header">
         <h2>Results — <span id="results-title"></span></h2>
-        <button class="btn btn-sm" onclick="document.getElementById('results-panel').style.display='none'">✕ Close</button>
+        <button class="btn btn-sm" onclick="document.getElementById('results-panel').style.display='none'">Close</button>
     </div>
     <div class="results-meta">
         <span id="results-count"></span> jobs found ·
@@ -69,8 +68,6 @@
 
 {% block scripts %}
 <script>
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
 
 // --- Config status check ---
 async function checkConfig() {
@@ -117,7 +114,7 @@ $('#scrape-form').addEventListener('submit', async (e) => {
     }
 
     btn.disabled = false;
-    btn.textContent = '🚀 Start Scrape';
+    btn.textContent = 'Start Scrape';
     loadScrapes();
 });
 
@@ -134,14 +131,14 @@ async function loadScrapes() {
                 <tbody>${scrapes.map(s => `
                     <tr>
                         <td>#${s.id}</td>
-                        <td>${(s.keywords || []).slice(0, 3).join(', ')}${s.keywords?.length > 3 ? '...' : ''}</td>
+                        <td>${escapeHtml((s.keywords || []).slice(0, 3).join(', '))}${s.keywords?.length > 3 ? '...' : ''}</td>
                         <td>${s.new_count !== undefined && s.new_count !== null ? `<strong>${s.new_count} new</strong> / ${s.result_count || 0}` : (s.result_count || '-')}</td>
-                        <td><span class="badge badge-${s.status}">${s.status}${s.error_message ? ' ⚠️' : ''}</span></td>
+                        <td><span class="badge badge-${s.status}">${escapeHtml(s.status)}${s.error_message ? ' !' : ''}</span></td>
                         <td>${s.created_at?.replace('T', ' ').slice(0, 19) || ''}</td>
                         <td>
-                            ${s.error_message ? `<span class="muted" title="${s.error_message}">❌</span> ` : ''}
-                            ${s.status === 'completed' ? `<button class="btn btn-sm" onclick="viewResults(${s.id})">📋 View</button>` : ''}
-                            ${s.status === 'running' || s.status === 'pending' ? `<button class="btn btn-sm" onclick="refreshScrape(${s.id})">🔄 Refresh</button>` : ''}
+                            ${s.error_message ? `<span class="muted" title="${escapeHtml(s.error_message)}">error</span> ` : ''}
+                            ${s.status === 'completed' ? `<button class="btn btn-sm" onclick="viewResults(${s.id})">View</button>` : ''}
+                            ${s.status === 'running' || s.status === 'pending' ? `<button class="btn btn-sm" onclick="refreshScrape(${s.id})">Refresh</button>` : ''}
                         </td>
                     </tr>`).join('')}</tbody></table>`;
         $('#scrapes-list').innerHTML = html;
@@ -166,22 +163,26 @@ async function viewResults(id) {
         } else {
             grid.innerHTML = results.map((job, i) => {
                 const score = job._score || 0;
+                const scoreColor = score >= 80 ? 'var(--success)' : score >= 50 ? 'var(--warning)' : 'var(--danger)';
                 const scoreClass = score >= 80 ? 'badge-success' : score >= 50 ? 'badge-warning' : 'badge-danger';
                 return `
                 <div class="job-card card">
-                    <div style="display:flex;justify-content:space-between;align-items:start">
-                        <h3 style="margin-right:12px"><a href="${job.url || job.listingUrl || '#'}" target="_blank">${job.title || 'Untitled'}</a></h3>
-                        <span class="badge ${scoreClass}" title="Job quality score">${score}/100</span>
+                    <div class="flex-start">
+                        <h3 class="job-title"><a href="${escapeHtml(job.url || job.listingUrl || '#')}" target="_blank">${escapeHtml(job.title || 'Untitled')}</a></h3>
+                        <span class="score-pill ${scoreClass}">
+                            <span class="score-fill"><span class="score-fill-inner" style="width:${score}%;background:${scoreColor}"></span></span>
+                            ${score}
+                        </span>
                     </div>
                     <div class="job-meta">
-                        <span class="badge">${job.jobType || 'N/A'}</span>
-                        <span>💰 ${job.budget || 'Not specified'}</span>
-                        <span>📍 ${job.clientCountry || 'Unknown'}</span>
+                        <span class="badge">${escapeHtml(job.jobType || 'N/A')}</span>
+                        <span>${escapeHtml(job.budget || 'Not specified')}</span>
+                        <span>${escapeHtml(job.clientCountry || 'Unknown')}</span>
                     </div>
-                    <p class="job-desc">${(job.description || '').slice(0, 300)}${(job.description || '').length > 300 ? '...' : ''}</p>
-                    <div style="display:flex;gap:8px;align-items:center">
-                        <button class="btn btn-secondary" onclick="generateProposal(${id}, ${i})">✍️ Generate Proposal</button>
-                        <button class="btn btn-sm" onclick="saveToNotion(${id}, ${i})" title="Save to Notion">📋 Save</button>
+                    <p class="job-desc">${escapeHtml((job.description || '').slice(0, 300))}${(job.description || '').length > 300 ? '...' : ''}</p>
+                    <div class="flex-gap">
+                        <button class="btn btn-secondary" onclick="generateProposal(event, ${id}, ${i})">Generate Proposal</button>
+                        <button class="btn btn-sm" onclick="saveToNotion(${id}, ${i})" title="Save to Notion">Save</button>
                     </div>
                 </div>`;
             }).join('');
@@ -195,11 +196,11 @@ async function viewResults(id) {
 }
 
 // --- Generate proposal ---
-async function generateProposal(scrapeId, jobIndex) {
+async function generateProposal(e, scrapeId, jobIndex) {
     try {
         const scrape = await api(`/api/scrapes/${scrapeId}`);
         const job = scrape.results[jobIndex];
-        const btn = event.target;
+        const btn = e.target;
         btn.disabled = true;
         btn.textContent = 'Generating...';
 
@@ -209,11 +210,11 @@ async function generateProposal(scrapeId, jobIndex) {
         });
 
         toast('Proposal generated!', 'success');
-        btn.textContent = '✅ Drafted';
+        btn.textContent = 'Drafted';
     } catch (err) {
         toast(err.message, 'error');
-        btn.disabled = false;
-        btn.textContent = '✍️ Generate Proposal';
+        e.target.disabled = false;
+        e.target.textContent = 'Generate Proposal';
     }
 }
 
@@ -258,13 +259,13 @@ async function saveToNotion(scrapeId, jobIndex) {
     try {
         const res = await api(`/api/jobs/${scrapeId}/${jobIndex}/save-to-notion`, { method: 'POST' });
         if (res.ok) {
-            toast('✅ Saved to Notion!', 'success');
+            toast('Saved to Notion!', 'success');
         } else {
             toast('Failed to save', 'error');
         }
     } catch (err) {
         if (err.message.includes('Notion not configured')) {
-            toast('⚠️ Configure Notion in Settings first', 'error');
+            toast('Configure Notion in Settings first', 'error');
         } else {
             toast(err.message, 'error');
         }
@@ -274,7 +275,6 @@ async function saveToNotion(scrapeId, jobIndex) {
 // --- Init ---
 checkConfig();
 loadScrapes();
-// Auto-refresh scrapes list every 15s
 setInterval(loadScrapes, 15000);
 </script>
 {% endblock %}

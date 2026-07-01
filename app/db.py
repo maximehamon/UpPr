@@ -1,22 +1,33 @@
 import aiosqlite
 import os
+from contextlib import asynccontextmanager
 
 DB_PATH = os.environ.get("RENDER_DISK_PATH") or os.environ.get("FLY_DATA_PATH", ".")
 if DB_PATH and not DB_PATH.endswith("/"):
     DB_PATH = DB_PATH + "/"
 DB_PATH = DB_PATH + "data.db"
 
-async def get_db() -> aiosqlite.Connection:
+_tables_created = False
+
+
+@asynccontextmanager
+async def get_db():
+    global _tables_created
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA busy_timeout=5000")
-    await _ensure_tables(db)
-    return db
+    if not _tables_created:
+        await _ensure_tables(db)
+        _tables_created = True
+    try:
+        yield db
+    finally:
+        await db.close()
 
 
 async def _ensure_tables(db: aiosqlite.Connection):
-    """Idempotent table creation + migration — safe to call on every connection."""
+    """Idempotent table creation + migration — runs once at startup."""
     await db.executescript("""
         CREATE TABLE IF NOT EXISTS scrapes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,37 +69,56 @@ async def _ensure_tables(db: aiosqlite.Connection):
             ('slack_webhook_url', '');
     """)
 
-    # Migrations - add missing columns if they don't exist
     try:
-        # Check if template_id column exists (SQLite doesn't have IF NOT EXISTS for ALTER TABLE)
         cursor = await db.execute("PRAGMA table_info(proposals)")
         columns = [row["name"] for row in await cursor.fetchall()]
         if "template_id" not in columns:
             await db.execute("ALTER TABLE proposals ADD COLUMN template_id TEXT")
             await db.commit()
     except Exception:
-        pass  # Table might have been created fresh, ignore
+        pass
 
 
 async def init_db():
-    """Create all tables on startup (now just calls get_db to ensure tables)."""
-    db = await get_db()
-    await db.close()
+    """Create all tables on startup."""
+    async with get_db():
+        pass
 
 
 async def get_setting(key: str, default: str = "") -> str:
-    db = await get_db()
-    row = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
-    result = await row.fetchone()
-    await db.close()
-    return result["value"] if result else default
+    async with get_db() as db:
+        row = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        result = await row.fetchone()
+        return result["value"] if result else default
+
+
+async def get_settings_bulk(keys: dict[str, str]) -> dict[str, str]:
+    """Fetch multiple settings in one connection. keys = {key: default_value}."""
+    async with get_db() as db:
+        placeholders = ",".join("?" for _ in keys)
+        rows = await db.execute(
+            f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
+            list(keys.keys()),
+        )
+        found = {r["key"]: r["value"] for r in await rows.fetchall()}
+        return {k: found.get(k, default) for k, default in keys.items()}
 
 
 async def set_setting(key: str, value: str):
-    db = await get_db()
-    await db.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-        (key, value),
-    )
-    await db.commit()
-    await db.close()
+    async with get_db() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def set_settings_bulk(settings: dict[str, str]):
+    """Write multiple settings in one connection."""
+    async with get_db() as db:
+        for key, value in settings.items():
+            await db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        await db.commit()

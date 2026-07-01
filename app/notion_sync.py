@@ -20,24 +20,20 @@ NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
 _notion_client = None
 
 
-def _get_settings_from_db() -> tuple[str, str]:
+async def _get_settings_from_db() -> tuple[str, str]:
     """Try to get Notion settings from DB (user-configured via Settings page)."""
+    if NOTION_API_KEY and NOTION_DATABASE_ID:
+        return NOTION_API_KEY, NOTION_DATABASE_ID
     try:
-        import asyncio
-        from app.db import get_db, get_setting
-        loop = asyncio.get_event_loop()
-        if NOTION_API_KEY and NOTION_DATABASE_ID:
-            return NOTION_API_KEY, NOTION_DATABASE_ID
-        # Check DB
-        try:
-            db = asyncio.run(get_db())
-            api_key = asyncio.run(get_setting("notion_api_key", ""))
-            db_id = asyncio.run(get_setting("notion_database_id", ""))
-            asyncio.run(db.close())
-            if api_key and db_id:
-                return api_key, db_id
-        except Exception:
-            pass
+        from app.db import get_settings_bulk
+        settings = await get_settings_bulk({
+            "notion_api_key": "",
+            "notion_database_id": "",
+        })
+        api_key = settings["notion_api_key"]
+        db_id = settings["notion_database_id"]
+        if api_key and db_id:
+            return api_key, db_id
     except Exception:
         pass
     return NOTION_API_KEY, NOTION_DATABASE_ID
@@ -57,9 +53,9 @@ def _get_notion_client(auth_token: str | None = None):
     return _notion_client
 
 
-def is_configured() -> bool:
+async def is_configured() -> bool:
     """Check if Notion integration is configured."""
-    api_key, db_id = _get_settings_from_db()
+    api_key, db_id = await _get_settings_from_db()
     return bool(api_key and db_id)
 
 
@@ -77,12 +73,12 @@ async def save_job_to_notion(job: dict, score: int, scrape_id: int) -> str | Non
     - Scraped At (date)
     - Keywords (rich_text)
     """
-    if not is_configured():
+    if not await is_configured():
         logger.debug("Notion not configured, skipping save")
         return None
 
     try:
-        api_key, database_id = _get_settings_from_db()
+        api_key, database_id = await _get_settings_from_db()
         client = _get_notion_client(api_key)
 
         properties = {
@@ -144,11 +140,11 @@ async def save_job_to_notion(job: dict, score: int, scrape_id: int) -> str | Non
 
 async def check_duplicate_in_notion(url: str) -> bool:
     """Check if a job URL already exists in the Notion database."""
-    if not is_configured():
+    if not await is_configured():
         return False
 
     try:
-        api_key, database_id = _get_settings_from_db()
+        api_key, database_id = await _get_settings_from_db()
         client = _get_notion_client(api_key)
         response = client.databases.query(
             database_id=database_id,

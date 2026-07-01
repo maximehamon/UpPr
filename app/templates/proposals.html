@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Proposals — Upwork Pipeline{% endblock %}
+{% block title %}Proposals — UpPr{% endblock %}
 
 {% block content %}
 
@@ -7,7 +7,7 @@
 
 <!-- A/B Test Results -->
 <section class="card">
-    <h2>🧪 A/B Test Results</h2>
+    <h2>A/B Test Results</h2>
     <p class="muted">Which proposal templates perform best? Response rate = clients who replied.</p>
     <div id="ab-results">
         <p class="muted">Loading...</p>
@@ -16,8 +16,8 @@
 
 <!-- Template Management -->
 <section class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-        <h2>📝 Proposal Templates</h2>
+    <div class="flex-between">
+        <h2>Proposal Templates</h2>
         <button class="btn btn-primary btn-sm" onclick="showTemplateForm()">+ New Template</button>
     </div>
     <p class="muted">Create different proposal personas/styles and A/B test them against each other.</p>
@@ -62,15 +62,15 @@
             <input type="number" id="template-max-tokens" value="600" min="100" max="2000" step="50">
         </div>
     </div>
-    <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="saveTemplate()">💾 Save Template</button>
-        <button class="btn btn-secondary" onclick="hideTemplateForm()">Cancel</button>
+    <div class="flex-gap">
+        <button class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+        <button class="btn" onclick="hideTemplateForm()">Cancel</button>
     </div>
 </section>
 
 <!-- Existing Proposals -->
 <section class="card">
-    <h2>📋 Generated Proposals</h2>
+    <h2>Generated Proposals</h2>
     <div id="proposals-list">
         <p class="muted">Loading...</p>
     </div>
@@ -80,7 +80,6 @@
 
 {% block scripts %}
 <script>
-const $ = (s) => document.querySelector(s);
 
 // ── Templates ────────────────────────────────────────────────────────
 
@@ -92,19 +91,19 @@ async function loadTemplates() {
             return;
         }
         $('#templates-list').innerHTML = templates.map(t => `
-            <div class="template-card card" style="margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="template-card card">
+                <div class="flex-between">
                     <div>
-                        <h3 style="margin:0">${t.name || 'Untitled'}</h3>
-                        <span class="muted">${t.role || 'No role'} · ${t.skills || 'No skills'}</span>
+                        <h3 style="margin:0">${escapeHtml(t.name || 'Untitled')}</h3>
+                        <span class="muted">${escapeHtml(t.role || 'No role')} · ${escapeHtml(t.skills || 'No skills')}</span>
                     </div>
-                    <div style="display:flex;gap:8px">
-                        <button class="btn btn-sm" onclick="editTemplate('${t.id}')">✏️ Edit</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteTemplate('${t.id}')">🗑</button>
+                    <div class="flex-gap">
+                        <button class="btn btn-sm" onclick="editTemplate('${escapeHtml(t.id)}')">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTemplate('${escapeHtml(t.id)}')">Delete</button>
                     </div>
                 </div>
-                <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">
-                    Temp: ${t.temperature || 0.7} · Tokens: ${t.max_tokens || 600} · 
+                <div class="template-meta">
+                    Temp: ${t.temperature || 0.7} · Tokens: ${t.max_tokens || 600} ·
                     Sent: ${t.stats?.sent || 0} · Responded: ${t.stats?.responded || 0} · Hired: ${t.stats?.hired || 0}
                 </div>
             </div>
@@ -128,7 +127,7 @@ async function loadABResults() {
                 </tr></thead>
                 <tbody>${results.map(r => `
                     <tr>
-                        <td><strong>${r.name}</strong></td>
+                        <td><strong>${escapeHtml(r.name)}</strong></td>
                         <td>${r.sent}</td>
                         <td>${r.responded}</td>
                         <td><span class="badge ${r.response_rate > 20 ? 'badge-success' : r.response_rate > 10 ? 'badge-warning' : 'badge-failed'}">${r.response_rate}%</span></td>
@@ -237,23 +236,23 @@ async function loadProposals() {
             <div class="proposal-card card">
                 <div class="proposal-header">
                     <div>
-                        <h3>${(p.job_data || {}).title || 'Untitled Job'}</h3>
-                        <span class="badge badge-${p.status}">${p.status}</span>
-                        <span class="muted">· ${p.model_used || 'unknown model'} · ${p.created_at?.replace('T', ' ').slice(0, 19)}</span>
-                        ${p.template_id ? '<span class="muted">· template: ' + p.template_id + '</span>' : ''}
+                        <h3>${escapeHtml((p.job_data || {}).title || 'Untitled Job')}</h3>
+                        <span class="badge badge-${p.status}">${escapeHtml(p.status)}</span>
+                        <span class="muted">· ${escapeHtml(p.model_used || 'unknown model')} · ${p.created_at?.replace('T', ' ').slice(0, 19)}</span>
+                        ${p.template_id ? '<span class="muted">· template: ' + escapeHtml(p.template_id) + '</span>' : ''}
                     </div>
-                    <div>
-                        <button class="btn btn-sm" onclick="copyProposal(${p.id})">📋 Copy</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteProposal(${p.id})">🗑 Delete</button>
+                    <div class="flex-gap">
+                        <button class="btn btn-sm" onclick="copyProposal(${p.id})">Copy</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteProposal(${p.id})">Delete</button>
                     </div>
                 </div>
                 <div class="proposal-body">
                     <h4>Job Details</h4>
-                    <p><strong>Budget:</strong> ${(p.job_data || {}).budget || 'N/A'} ·
-                       <strong>Type:</strong> ${(p.job_data || {}).jobType || 'N/A'} ·
-                       <strong>Country:</strong> ${(p.job_data || {}).clientCountry || 'N/A'}</p>
+                    <p><strong>Budget:</strong> ${escapeHtml((p.job_data || {}).budget || 'N/A')} ·
+                       <strong>Type:</strong> ${escapeHtml((p.job_data || {}).jobType || 'N/A')} ·
+                       <strong>Country:</strong> ${escapeHtml((p.job_data || {}).clientCountry || 'N/A')}</p>
                     <h4>Proposal</h4>
-                    <pre class="proposal-text">${(p.proposal_text || '')}</pre>
+                    <div class="proposal-text">${escapeHtml(p.proposal_text || '')}</div>
                 </div>
             </div>
         `).join('');
@@ -265,17 +264,20 @@ async function loadProposals() {
 async function copyProposal(id) {
     try {
         const res = await api(`/api/proposals/${id}`);
-        await navigator.clipboard.writeText(res.proposal_text || '');
+        const text = res.proposal_text || '';
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (_) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        }
         toast('Proposal copied to clipboard!', 'success');
     } catch (err) {
-        const res = await api(`/api/proposals/${id}`);
-        const ta = document.createElement('textarea');
-        ta.value = res.proposal_text || '';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        toast('Proposal copied!', 'success');
+        toast(err.message, 'error');
     }
 }
 

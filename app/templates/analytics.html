@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Analytics — Upwork Pipeline{% endblock %}
+{% block title %}Analytics — UpPr{% endblock %}
 
 {% block content %}
 
-<h1>📊 Analytics</h1>
+<h1>Analytics</h1>
 
 <!-- Summary cards -->
 <div class="analytics-grid">
@@ -35,7 +35,7 @@
 
 <!-- Today's summary -->
 <section class="card">
-    <h2>📅 Today</h2>
+    <h2>Today</h2>
     <div class="analytics-grid">
         <div><strong>Scrapes:</strong> <span id="today-scrapes">-</span></div>
         <div><strong>Jobs Found:</strong> <span id="today-jobs">-</span></div>
@@ -46,39 +46,39 @@
 
 <!-- Jobs per day chart -->
 <section class="card">
-    <h2>📈 New Jobs Per Day (Last 14 Days)</h2>
+    <h2>New Jobs Per Day (Last 14 Days)</h2>
     <div id="chart-jobs-per-day" class="chart-container"></div>
 </section>
 
 <!-- Score distribution -->
 <section class="card">
-    <h2>🎯 Score Distribution</h2>
+    <h2>Score Distribution</h2>
     <div id="chart-scores" class="chart-container"></div>
 </section>
 
 <div class="analytics-row">
     <!-- Top Keywords -->
     <section class="card">
-        <h2>🏷️ Top Keywords</h2>
+        <h2>Top Keywords</h2>
         <div id="top-keywords"></div>
     </section>
 
     <!-- Top Countries -->
     <section class="card">
-        <h2>🌍 Top Client Countries</h2>
+        <h2>Top Client Countries</h2>
         <div id="top-countries"></div>
     </section>
 </div>
 
 <!-- Budget Distribution -->
 <section class="card">
-    <h2>💰 Budget Distribution</h2>
+    <h2>Budget Distribution</h2>
     <div id="chart-budget" class="chart-container"></div>
 </section>
 
 <!-- Model Usage -->
 <section class="card">
-    <h2>🤖 Models Used</h2>
+    <h2>Models Used</h2>
     <div id="models-usage"></div>
 </section>
 
@@ -86,7 +86,6 @@
 
 {% block scripts %}
 <script>
-const $ = (s) => document.querySelector(s);
 
 async function loadAnalytics() {
     try {
@@ -106,22 +105,11 @@ async function loadAnalytics() {
         $('#today-new').textContent = stats.new_jobs_today;
         $('#today-proposals').textContent = stats.proposals_today;
 
-        // Jobs per day bar chart
         renderJobsPerDay(stats.jobs_per_day);
-
-        // Score distribution
         renderScoreDistribution(stats.score_distribution);
-
-        // Top keywords
         renderTopKeywords(stats.top_keywords);
-
-        // Top countries
         renderTopCountries(stats.top_countries);
-
-        // Budget distribution
         renderBudgetDistribution(stats.budget_distribution);
-
-        // Models usage
         renderModelsUsage(stats.models_usage);
 
     } catch (err) {
@@ -141,11 +129,11 @@ function renderJobsPerDay(data) {
     let html = '<div class="bar-chart">';
     data.forEach(d => {
         const height = Math.max((d.count / max) * barHeight, 2);
-        const label = d.date.slice(5); // MM-DD
+        const label = d.date.slice(5);
         html += `
-            <div class="bar-item" title="${d.date}: ${d.count} new jobs">
+            <div class="bar-item" title="${escapeHtml(d.date)}: ${d.count} new jobs">
                 <div class="bar" style="height:${height}px">${d.count > 0 ? d.count : ''}</div>
-                <div class="bar-label">${label}</div>
+                <div class="bar-label">${escapeHtml(label)}</div>
             </div>`;
     });
     html += '</div>';
@@ -170,14 +158,14 @@ function renderScoreDistribution(dist) {
 
     container.innerHTML = `
         <div class="score-bar">
-            <div class="score-segment score-high" style="width:${highPct}%">🟢 ${dist.high || 0}</div>
-            <div class="score-segment score-medium" style="width:${medPct}%">🟡 ${dist.medium || 0}</div>
-            <div class="score-segment score-low" style="width:${lowPct}%">🔴 ${dist.low || 0}</div>
+            <div class="score-segment score-high" style="width:${highPct}%">${dist.high || 0}</div>
+            <div class="score-segment score-medium" style="width:${medPct}%">${dist.medium || 0}</div>
+            <div class="score-segment score-low" style="width:${lowPct}%">${dist.low || 0}</div>
         </div>
         <div class="score-legend">
-            <span>🟢 High (≥75): ${highPct}%</span>
-            <span>🟡 Medium (50-74): ${medPct}%</span>
-            <span>🔴 Low (&lt;50): ${lowPct}%</span>
+            <span>High (&ge;75): ${highPct}%</span>
+            <span>Medium (50-74): ${medPct}%</span>
+            <span>Low (&lt;50): ${lowPct}%</span>
         </div>`;
 }
 
@@ -191,7 +179,7 @@ function renderTopKeywords(keywords) {
     container.innerHTML = keywords.map(([kw, count]) => {
         const pct = (count / max * 100).toFixed(0);
         return `<div class="list-bar">
-            <span class="list-bar-label">${kw}</span>
+            <span class="list-bar-label">${escapeHtml(kw)}</span>
             <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
             <span class="list-bar-count">${count}</span>
         </div>`;
@@ -208,7 +196,7 @@ function renderTopCountries(countries) {
     container.innerHTML = countries.map(([country, count]) => {
         const pct = (count / max * 100).toFixed(0);
         return `<div class="list-bar">
-            <span class="list-bar-label">${country}</span>
+            <span class="list-bar-label">${escapeHtml(country)}</span>
             <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
             <span class="list-bar-count">${count}</span>
         </div>`;
@@ -237,7 +225,7 @@ function renderBudgetDistribution(dist) {
     container.innerHTML = Object.entries(dist).map(([key, count]) => {
         const pct = (count / total * 100).toFixed(0);
         return `<div class="list-bar">
-            <span class="list-bar-label">${labels[key] || key}</span>
+            <span class="list-bar-label">${labels[key] || escapeHtml(key)}</span>
             <div class="list-bar-track"><div class="list-bar-fill budget" style="width:${pct}%"></div></div>
             <span class="list-bar-count">${count} (${pct}%)</span>
         </div>`;
@@ -254,7 +242,7 @@ function renderModelsUsage(models) {
     container.innerHTML = models.map(m => {
         const pct = (m.count / max * 100).toFixed(0);
         return `<div class="list-bar">
-            <span class="list-bar-label">${m.model}</span>
+            <span class="list-bar-label">${escapeHtml(m.model)}</span>
             <div class="list-bar-track"><div class="list-bar-fill" style="width:${pct}%"></div></div>
             <span class="list-bar-count">${m.count}</span>
         </div>`;

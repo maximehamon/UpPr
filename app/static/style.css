@@ -50,15 +50,20 @@ body {
 .nav-brand {
     font-size: 18px;
     font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    letter-spacing: -0.5px;
 }
 
-.nav-links { display: flex; gap: 16px; }
+.nav-brand:hover { text-decoration: none; color: var(--primary); }
+
+.nav-links { display: flex; gap: 4px; }
 
 .nav-link {
     color: var(--text-muted);
     text-decoration: none;
     font-size: 14px;
-    padding: 4px 12px;
+    padding: 6px 12px;
     border-radius: 6px;
     transition: all 0.15s;
 }
@@ -66,6 +71,13 @@ body {
 .nav-link:hover {
     color: var(--text);
     background: var(--bg-hover);
+    text-decoration: none;
+}
+
+.nav-link.active {
+    color: var(--text);
+    background: var(--bg-hover);
+    font-weight: 600;
 }
 
 /* ── Layout ────────────────────────────────────── */
@@ -100,8 +112,8 @@ h4 { font-size: 14px; font-weight: 600; margin: 12px 0 4px; color: var(--text-mu
     color: var(--text-muted);
 }
 
-.form-row { display: flex; gap: 12px; }
-.form-row .form-group { flex: 1; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row .form-group { flex: 1; min-width: 140px; }
 
 input, textarea, select {
     width: 100%;
@@ -193,6 +205,25 @@ input:focus, textarea:focus, select:focus {
 
 .table tr:hover { background: var(--bg-hover); }
 
+/* ── Shared layout helpers ────────────────────── */
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.flex-start {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.flex-gap {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
 /* ── Job cards in results grid ─────────────────── */
 .job-card { margin-bottom: 12px; }
 
@@ -203,6 +234,7 @@ input:focus, textarea:focus, select:focus {
     font-size: 13px;
     color: var(--text-muted);
     margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 
 .job-desc {
@@ -210,6 +242,39 @@ input:focus, textarea:focus, select:focus {
     color: var(--text-muted);
     margin-bottom: 12px;
     line-height: 1.5;
+}
+
+.job-title {
+    margin-right: 12px;
+}
+
+.job-title a { color: var(--text); }
+.job-title a:hover { color: var(--primary); }
+
+/* ── Score bar (inline) ──────────────────────── */
+.score-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.score-pill .score-fill {
+    width: 40px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.score-pill .score-fill-inner {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
 }
 
 /* ── Proposals ─────────────────────────────────── */
@@ -230,6 +295,15 @@ input:focus, textarea:focus, select:focus {
     line-height: 1.7;
     white-space: pre-wrap;
     border: 1px solid var(--border);
+    font-family: var(--font);
+}
+
+/* ── Template cards ──────────────────────────── */
+.template-card { margin-bottom: 12px; }
+.template-meta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 /* ── Panel ─────────────────────────────────────── */
@@ -252,9 +326,20 @@ input:focus, textarea:focus, select:focus {
 .config-bar {
     display: flex;
     gap: 16px;
-    padding: 8px 0;
+    padding: 10px 16px;
     font-size: 12px;
     color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.config-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .status-dot {
@@ -262,7 +347,6 @@ input:focus, textarea:focus, select:focus {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    margin-right: 4px;
 }
 
 .status-ok { background: var(--success); }
@@ -335,9 +419,6 @@ code {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
-}
-@media (max-width: 768px) {
-    .analytics-row { grid-template-columns: 1fr; }
 }
 .chart-container {
     min-height: 140px;
@@ -437,5 +518,18 @@ code {
     font-size: 13px;
     color: var(--text-muted);
 }
+
+/* ── Responsive ────────────────────────────────── */
+@media (max-width: 768px) {
+    .analytics-row { grid-template-columns: 1fr; }
+    .navbar { padding: 12px 16px; }
+    .nav-links { gap: 2px; }
+    .nav-link { padding: 6px 8px; font-size: 13px; }
+    .container { padding: 16px; }
+    .proposal-header { flex-direction: column; gap: 8px; }
 }
-</｜DSML｜parameter>=
+
+@media (max-width: 480px) {
+    .nav-links { gap: 0; }
+    .nav-link { padding: 6px 6px; font-size: 12px; }
+}
