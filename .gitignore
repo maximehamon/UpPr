@@ -3,3 +3,13 @@ __pycache__/
 .venv/
 data.db
 .env
+uv.lock
+*.zip
+*.csv
+Outbound Database/
+coldoutboundskills-main/
+cold-email-ai-skills-*/
+notion-api-docs/
+.agents/
+.hermes/
+.claude/
