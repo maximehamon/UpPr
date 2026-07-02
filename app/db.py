@@ -1,6 +1,9 @@
+import logging
 import aiosqlite
 import os
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("RENDER_DISK_PATH") or os.environ.get("FLY_DATA_PATH", ".")
 if DB_PATH and not DB_PATH.endswith("/"):
@@ -70,6 +73,7 @@ async def _ensure_tables(db: aiosqlite.Connection):
     """)
 
     # Migrations for columns added after initial schema
+    logger.info("Running DB migrations check...")
     for table, column, col_type in [
         ("proposals", "template_id", "TEXT"),
         ("scrapes", "error_message", "TEXT DEFAULT ''"),
@@ -79,10 +83,14 @@ async def _ensure_tables(db: aiosqlite.Connection):
             cursor = await db.execute(f"PRAGMA table_info({table})")
             columns = [row["name"] for row in await cursor.fetchall()]
             if column not in columns:
+                logger.info(f"Migration: adding {table}.{column} ({col_type})")
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
                 await db.commit()
-        except Exception:
-            pass
+                logger.info(f"Migration: {table}.{column} added successfully")
+            else:
+                logger.info(f"Migration: {table}.{column} already exists, skipping")
+        except Exception as e:
+            logger.error(f"Migration failed for {table}.{column}: {e}")
 
 
 async def init_db():
