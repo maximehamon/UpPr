@@ -56,6 +56,8 @@ class SettingsUpdate(BaseModel):
     my_skills: str | None = None
     model: str | None = None
     slack_webhook_url: str | None = None
+    auto_scrape_enabled: str | None = None
+    auto_scrape_interval: str | None = None
     auto_keywords: str | None = None
     auto_job_type: str | None = None
     auto_max_jobs: str | None = None
@@ -345,6 +347,8 @@ _SETTINGS_DEFAULTS = {
     "my_skills": "",
     "model": "openai/gpt-4o",
     "slack_webhook_url": "",
+    "auto_scrape_enabled": "false",
+    "auto_scrape_interval": "60",
     "auto_keywords": "",
     "auto_job_type": "hourly",
     "auto_max_jobs": "50",
@@ -515,6 +519,12 @@ async def slack_interactive(payload: str = Form(None)):
 
         if action_id == "generate_proposal":
             await _handle_slack_proposal(value)
+        elif action_id == "save_to_notion":
+            await _handle_slack_save_notion(value)
+        elif action_id == "dismiss_job":
+            pass  # Just acknowledge
+        elif action_id.startswith("generate_proposal_"):
+            await _handle_slack_proposal(value)
 
     return {"ok": True}
 
@@ -582,6 +592,43 @@ async def _handle_slack_proposal(value: str):
                 text[:300],
             ),
         )
+
+
+async def _handle_slack_save_notion(value: str):
+    """Save a job to Notion from a Slack button click."""
+    parts = value.split(":")
+    if len(parts) != 2:
+        return
+
+    scrape_id, job_index = int(parts[0]), int(parts[1])
+
+    async with get_db() as db:
+        row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
+        scrape = await row.fetchone()
+        if not scrape or not scrape["results_json"]:
+            return
+
+        results = json.loads(scrape["results_json"])
+        if job_index >= len(results):
+            return
+
+        job = results[job_index]
+        score = job.get("_score", 0)
+
+    from app.notion_sync import save_job_to_notion as notion_save, is_configured
+    if not await is_configured():
+        logger.warning("_handle_slack_save_notion: Notion not configured")
+        return
+
+    page_id = await notion_save(job, score, scrape_id)
+
+    slack_url = await get_setting("slack_webhook_url", "")
+    if slack_url:
+        title = job.get("title", "Untitled")
+        if page_id:
+            await send_slack_message(slack_url, f"Saved to Notion: {title}")
+        else:
+            await send_slack_message(slack_url, f"Failed to save to Notion: {title}")
 
 
 # ── Health & Maintenance ──────────────────────────────────────────────

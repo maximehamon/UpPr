@@ -231,6 +231,12 @@ def format_job_alert_blocks(
     })
     actions.append({
         "type": "button",
+        "text": {"type": "plain_text", "text": "📋 Save to Notion"},
+        "action_id": "save_to_notion",
+        "value": f"{scrape_id}:{job_index}",
+    })
+    actions.append({
+        "type": "button",
         "text": {"type": "plain_text", "text": "🗑 Dismiss"},
         "action_id": "dismiss_job",
         "value": f"{scrape_id}:{job_index}",

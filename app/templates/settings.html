@@ -38,8 +38,29 @@
 </section>
 
 <section class="card">
-    <h2>Hourly Auto-Scrape</h2>
-    <p class="muted">Automatically scrape for new jobs every hour. Only new jobs (not seen before) will be shown.</p>
+    <h2>Auto-Scrape Schedule</h2>
+    <p class="muted">Automatically scrape for new jobs on a schedule. Only new jobs (not seen before) will be shown.</p>
+    <div class="form-row" style="align-items:center;margin-bottom:12px">
+        <div class="form-group" style="flex:0 0 auto">
+            <label style="font-weight:normal;font-size:13px;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="auto-scrape-enabled">
+                <span>Enable auto-scrape</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label for="auto-scrape-interval">Interval</label>
+            <select id="auto-scrape-interval">
+                <option value="15">Every 15 minutes</option>
+                <option value="30">Every 30 minutes</option>
+                <option value="60">Every 1 hour</option>
+                <option value="120">Every 2 hours</option>
+                <option value="240">Every 4 hours</option>
+                <option value="360">Every 6 hours</option>
+                <option value="720">Every 12 hours</option>
+                <option value="1440">Every 24 hours</option>
+            </select>
+        </div>
+    </div>
     <div class="form-group">
         <label for="auto-keywords">Keywords (comma-separated)</label>
         <input type="text" id="auto-keywords" placeholder="e.g. python developer, web scraping, react">
@@ -138,6 +159,8 @@ async function loadSettings() {
         $('#my-skills').value = s.my_skills || '';
         $('#model').value = s.model || '';
         $('#slack-webhook').value = s.slack_webhook_url || '';
+        $('#auto-scrape-enabled').checked = (s.auto_scrape_enabled || 'false') === 'true';
+        $('#auto-scrape-interval').value = s.auto_scrape_interval || '60';
         $('#auto-keywords').value = s.auto_keywords || '';
         $('#auto-job-type').value = s.auto_job_type || 'hourly';
         $('#auto-max-jobs').value = s.auto_max_jobs || '50';
@@ -162,6 +185,8 @@ async function saveSettings() {
                 my_skills: $('#my-skills').value,
                 model: $('#model').value,
                 slack_webhook_url: $('#slack-webhook').value,
+                auto_scrape_enabled: $('#auto-scrape-enabled').checked ? 'true' : 'false',
+                auto_scrape_interval: $('#auto-scrape-interval').value,
                 auto_keywords: $('#auto-keywords').value,
                 auto_job_type: $('#auto-job-type').value,
                 auto_max_jobs: $('#auto-max-jobs').value,

@@ -195,11 +195,18 @@ async def _poll_scrape_inner(
 
 
 async def run_hourly_scrape():
-    """Run the hourly auto-scrape using saved keyword settings."""
+    """Run the auto-scrape using saved keyword settings."""
     global _last_auto_scrape
 
-    if _last_auto_scrape and (datetime.utcnow() - _last_auto_scrape) < timedelta(minutes=50):
-        logger.info("run_hourly_scrape: skipped (last run < 50min ago)")
+    # Use configured interval (default 60 min) instead of hardcoded 50 min
+    interval_setting = await get_setting("auto_scrape_interval", "60")
+    try:
+        interval_minutes = int(interval_setting)
+    except (ValueError, TypeError):
+        interval_minutes = 60
+
+    if _last_auto_scrape and (datetime.utcnow() - _last_auto_scrape) < timedelta(minutes=interval_minutes):
+        logger.info(f"run_hourly_scrape: skipped (last run < {interval_minutes}min ago)")
         return
 
     _last_auto_scrape = datetime.utcnow()

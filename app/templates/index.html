@@ -126,7 +126,9 @@
 <section class="card">
     <div class="flex-between">
         <h2>Scrapes</h2>
-        <div class="flex-gap">
+        <div class="flex-gap" style="align-items:center">
+            <span id="auto-scrape-status" class="muted" style="font-size:13px"></span>
+            <button class="btn btn-sm" id="auto-scrape-toggle" onclick="toggleAutoScrape()" style="display:none"></button>
             <button class="btn btn-sm" onclick="triggerAutoScrape()">Run Auto-Scrape</button>
             <button class="btn btn-sm" onclick="clearSeenJobs()">Clear History</button>
         </div>
@@ -452,9 +454,56 @@ async function saveToNotion(scrapeId, jobIndex) {
     }
 }
 
+// --- Auto-scrape status ---
+let _autoScrapeEnabled = false;
+
+async function loadAutoScrapeStatus() {
+    try {
+        const s = await api('/api/settings');
+        _autoScrapeEnabled = (s.auto_scrape_enabled || 'false') === 'true';
+        const interval = parseInt(s.auto_scrape_interval || '60');
+        const statusEl = $('#auto-scrape-status');
+        const toggleBtn = $('#auto-scrape-toggle');
+
+        let intervalLabel;
+        if (interval < 60) intervalLabel = interval + 'min';
+        else if (interval === 60) intervalLabel = '1h';
+        else if (interval < 1440) intervalLabel = (interval / 60) + 'h';
+        else intervalLabel = '24h';
+
+        if (_autoScrapeEnabled) {
+            statusEl.textContent = 'Auto-scrape: every ' + intervalLabel;
+            statusEl.style.color = 'var(--success, #22c55e)';
+            toggleBtn.textContent = 'Disable';
+            toggleBtn.className = 'btn btn-sm';
+        } else {
+            statusEl.textContent = 'Auto-scrape: off';
+            statusEl.style.color = '';
+            toggleBtn.textContent = 'Enable';
+            toggleBtn.className = 'btn btn-sm';
+        }
+        toggleBtn.style.display = '';
+    } catch (e) {}
+}
+
+async function toggleAutoScrape() {
+    const newVal = _autoScrapeEnabled ? 'false' : 'true';
+    try {
+        await api('/api/settings', {
+            method: 'POST',
+            body: JSON.stringify({ auto_scrape_enabled: newVal }),
+        });
+        toast(_autoScrapeEnabled ? 'Auto-scrape disabled' : 'Auto-scrape enabled', 'success');
+        await loadAutoScrapeStatus();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- Init ---
 checkConfig();
 loadScrapes();
+loadAutoScrapeStatus();
 setInterval(loadScrapes, 15000);
 </script>
 {% endblock %}
