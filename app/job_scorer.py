@@ -199,7 +199,8 @@ def _score_job_basic(job: dict, settings: dict | None = None) -> tuple[int, dict
     }
 
     # ── Budget / Rate (0-30) ─────────────────────────────────────────
-    budget = job.get("budget", None)
+    raw_budget = job.get("budget", None)
+    budget = _parse_number(raw_budget)
     hourly_rate = _parse_hourly_rate(job)
     job_type = (job.get("jobType", "") or "").lower()
 
@@ -239,7 +240,7 @@ def _score_job_basic(job: dict, settings: dict | None = None) -> tuple[int, dict
         score -= 10
         details["red_flags"].append("Payment not verified")
 
-    total_spend = job.get("clientTotalSpend", None) or job.get("totalSpend", None)
+    total_spend = _parse_number(job.get("clientTotalSpend") or job.get("totalSpend"))
     if total_spend:
         if total_spend >= 10000:
             score += 10
@@ -250,7 +251,7 @@ def _score_job_basic(job: dict, settings: dict | None = None) -> tuple[int, dict
             score -= 5
             details["red_flags"].append(f"Low client spend (${total_spend})")
 
-    hires = job.get("clientTotalHires", None) or job.get("totalHires", None)
+    hires = _parse_number(job.get("clientTotalHires") or job.get("totalHires"))
     if hires is not None:
         if hires >= 10:
             score += 5
@@ -258,7 +259,7 @@ def _score_job_basic(job: dict, settings: dict | None = None) -> tuple[int, dict
             score -= 5
             details["red_flags"].append("Client never hired anyone")
 
-    feedback = job.get("clientFeedbackScore", None) or job.get("feedback", None)
+    feedback = _parse_number(job.get("clientFeedbackScore") or job.get("feedback"))
     if feedback is not None:
         if feedback >= 4.5:
             score += 5
@@ -293,6 +294,22 @@ def _score_job_basic(job: dict, settings: dict | None = None) -> tuple[int, dict
     score = max(0, min(100, score))
 
     return score, details
+
+
+def _parse_number(value) -> float | None:
+    """Coerce a value to a number. Handles strings like '$1,500', '500', etc."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = re.sub(r"[^\d.]", "", value)
+        if cleaned:
+            try:
+                return float(cleaned)
+            except ValueError:
+                pass
+    return None
 
 
 def _parse_hourly_rate(job: dict) -> float | None:
