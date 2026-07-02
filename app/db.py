@@ -73,6 +73,7 @@ async def _ensure_tables(db: aiosqlite.Connection):
     for table, column, col_type in [
         ("proposals", "template_id", "TEXT"),
         ("scrapes", "error_message", "TEXT DEFAULT ''"),
+        ("scrapes", "new_count", "INTEGER DEFAULT 0"),
     ]:
         try:
             cursor = await db.execute(f"PRAGMA table_info({table})")
