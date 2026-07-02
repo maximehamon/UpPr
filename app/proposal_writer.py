@@ -1,3 +1,4 @@
+import re
 import httpx
 from app.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, PROPOSAL_MODEL, APP_BASE_URL
 
@@ -18,7 +19,11 @@ personalized proposal that:
 
 Keep it concise (150-250 words), professional, and warm. Do NOT use generic templates —
 each proposal must be tailored to the specific job. Format the output as plain text (no markdown).
-Sign off with a professional closing."""
+Sign off with a professional closing.
+
+CRITICAL: Output ONLY the final proposal text. Do NOT include any thinking, reasoning, planning,
+drafting notes, word counts, or internal commentary. Your entire response must be the proposal
+exactly as it would be sent to the client — nothing else."""
 
 PROPOSAL_USER_TEMPLATE = """Write a proposal for this Upwork job:
 
@@ -79,4 +84,6 @@ async def generate_proposal(
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        text = data["choices"][0]["message"]["content"]
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        return text
