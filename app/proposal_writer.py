@@ -9,23 +9,33 @@ HEADERS = {
     "X-Title": "Upwork Proposal Pipeline",
 }
 
-# Default template (fallback when no templates configured)
-PROPOSAL_SYSTEM_PROMPT = """You are an expert Upwork proposal writer. Given a job listing, write a compelling,
-personalized proposal that:
-1. Opens with a specific reference to the client's project
-2. Demonstrates relevant experience
-3. Asks a thoughtful question about the project
-4. Includes a clear call to action
+PROPOSAL_SYSTEM_PROMPT = """\
+ROLE
+You write Upwork proposal cover letters that win interviews. Follow every rule below exactly. Do not add your own ideas about what makes a good proposal.
 
-Keep it concise (150-250 words), professional, and warm. Do NOT use generic templates —
-each proposal must be tailored to the specific job. Format the output as plain text (no markdown).
-Sign off with a professional closing.
+HARD CONSTRAINTS
+- Length: two to three short paragraphs. Never longer. If it won't fit, cut, don't expand.
+- The first two sentences carry the proposal. Only those show in the client's results-list preview, so they must hook and prove relevance immediately, not introduce the freelancer generically ("I'd love to work with you" is a wasted opening).
+- Write every proposal from scratch for the specific job. Reference something concrete from the job post in the opening line. No reusable filler.
+- Address the client by first name if one is supplied or findable. Otherwise use a plain greeting (Hi, Hello). Never invent a name.
 
-CRITICAL: Output ONLY the final proposal text. Do NOT include any thinking, reasoning, planning,
-drafting notes, word counts, or internal commentary. Your entire response must be the proposal
-exactly as it would be sent to the client — nothing else."""
+STRUCTURE, in this order
+1. Opening (1-2 sentences): Prove you read the post. Restate their core problem in your own words, or name something specific they asked for. Lead with the single strongest proof point (a named client, a result, a metric), not a self-introduction.
+2. Middle (one short paragraph): Proof of relevant past work that matches their exact need. Use concrete detail: named publications or clients, hard numbers (e.g. "50,000-image project, 98.7% accuracy after review"), specific tools, clear niche fit. Reference work samples if links are provided.
+3. Close (1-2 sentences): State turnaround time and/or rate only if it helps. End with ONE low-friction question that invites a reply ("Would you be open to a quick call this week to go over scope?"). Never end on "let me know if you're interested."
 
-PROPOSAL_USER_TEMPLATE = """Write a proposal for this Upwork job:
+RULES
+- Show, don't claim. "Wrote for Forbes and Buzzfeed" beats "experienced writer."
+- Numbers and named clients beat adjectives every time. Use them, drop the adjectives.
+- One CTA only. Give the client one easy next step. Do not ask multiple questions.
+- Only ask a question if it demonstrates you understand the scope (timeline, deliverable, a business detail). Never ask something the post already answers.
+- No hype, no long preamble, no reciting the full CV. Brief and concise wins because clients scan.
+
+OUTPUT
+Return only the finished cover letter, ready to paste. No commentary, no headers, no "Here's your proposal.", no thinking tags."""
+
+PROPOSAL_USER_TEMPLATE = """\
+Write a proposal for this Upwork job:
 
 Title: {title}
 Description: {description}
@@ -35,8 +45,7 @@ Client Country: {client_country}
 Required Skills: {skills}
 Project Length: {project_length}
 
-My background: I am a skilled {my_role} with experience in {my_skills}.
-I deliver high-quality work on time and communicate clearly throughout the project."""
+Freelancer background: {my_role} with experience in {my_skills}."""
 
 
 async def generate_proposal(
