@@ -169,24 +169,21 @@ async def _poll_scrape_inner(
     slack_url = alert_settings["slack_webhook_url"]
 
     if slack_url:
-        instant_threshold = int(alert_settings["instant_alert_threshold"])
-        high_jobs = [j for j in scored_jobs if j.get("_score", 0) >= instant_threshold]
-
-        for i, job in enumerate(high_jobs[:3]):
+        for i, job in enumerate(scored_jobs[:10]):
             text, blocks = format_job_alert_blocks(
-                job, job["_score"], job["_score_details"],
+                job, job["_score"], job.get("_score_details", {}),
                 scrape_id, i, app_url=alert_settings["app_base_url"],
             )
-            await send_slack_interactive(slack_url, text, actions=[])
+            await send_slack_message(slack_url, text, blocks=blocks)
 
         keyword_str = ", ".join(keywords[:3])
         if len(keywords) > 3:
             keyword_str += f" +{len(keywords) - 3} more"
 
         if len(scored_jobs) > 0:
-            summary_text = f"{len(scored_jobs)} new jobs for [{keyword_str}] — {len(high_jobs)} high priority"
-            blocks = format_scrape_complete_blocks(keywords, len(scored_jobs), len(results))
-            await send_slack_message(slack_url, summary_text, blocks=blocks)
+            summary_text = f"{len(scored_jobs)} new jobs for [{keyword_str}]"
+            summary_blocks = format_scrape_complete_blocks(keywords, len(scored_jobs), len(results))
+            await send_slack_message(slack_url, summary_text, blocks=summary_blocks)
         else:
             await send_slack_message(
                 slack_url,
