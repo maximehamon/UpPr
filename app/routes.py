@@ -391,6 +391,50 @@ async def config_status():
 # ── Cron / Auto-scrape ───────────────────────────────────────────────
 
 
+@router.get("/api/scheduler/status")
+async def scheduler_status():
+    """Return current scheduler state and active/recent scrapes."""
+    from app.main import get_scheduler_state
+
+    state = get_scheduler_state()
+    settings = await get_settings_bulk({
+        "auto_scrape_enabled": "false",
+        "auto_scrape_interval": "60",
+        "auto_keywords": "",
+    })
+
+    async with get_db() as db:
+        row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM scrapes WHERE status IN ('pending', 'running')"
+        )
+        active = (await row.fetchone())["cnt"]
+
+        row = await db.execute(
+            "SELECT COUNT(*) as cnt FROM scrapes"
+        )
+        total = (await row.fetchone())["cnt"]
+
+    enabled = settings["auto_scrape_enabled"].lower() == "true"
+    interval = int(settings["auto_scrape_interval"])
+
+    next_run = None
+    if enabled and state["last_run"]:
+        from datetime import datetime, timezone, timedelta
+        last = datetime.fromisoformat(state["last_run"])
+        next_dt = last + timedelta(minutes=interval)
+        next_run = next_dt.isoformat()
+
+    return {
+        "enabled": enabled,
+        "interval_minutes": interval,
+        "keywords": settings["auto_keywords"],
+        "last_run": state["last_run"],
+        "next_run": next_run,
+        "active_scrapes": active,
+        "total_scrapes": total,
+    }
+
+
 @router.post("/api/cron/trigger")
 async def trigger_cron_scrape():
     """Manually trigger the hourly auto-scrape (used by cron jobs)."""
@@ -414,6 +458,39 @@ async def clear_seen_jobs():
         await db.execute("DELETE FROM seen_jobs")
         await db.commit()
     return {"ok": True, "message": "Cleared seen jobs history"}
+
+
+@router.delete("/api/scrapes/{scrape_id}")
+async def delete_scrape(scrape_id: int):
+    """Delete a single scrape and its results."""
+    async with get_db() as db:
+        await db.execute("DELETE FROM scrapes WHERE id = ?", (scrape_id,))
+        await db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/scrapes/clear-old")
+async def clear_old_scrapes():
+    """Delete all completed/failed scrapes older than 7 days."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "DELETE FROM scrapes WHERE status IN ('completed', 'failed') AND created_at < datetime('now', '-7 days')"
+        )
+        count = cursor.rowcount
+        await db.commit()
+    return {"ok": True, "deleted": count}
+
+
+@router.post("/api/scrapes/clear-all-completed")
+async def clear_all_completed():
+    """Delete all completed and failed scrapes."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "DELETE FROM scrapes WHERE status IN ('completed', 'failed')"
+        )
+        count = cursor.rowcount
+        await db.commit()
+    return {"ok": True, "deleted": count}
 
 
 # ── Notion Integration ────────────────────────────────────────────────

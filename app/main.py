@@ -24,6 +24,13 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 _last_scheduled_run: datetime | None = None
 
 
+def get_scheduler_state() -> dict:
+    """Return scheduler status for the API."""
+    return {
+        "last_run": _last_scheduled_run.isoformat() if _last_scheduled_run else None,
+    }
+
+
 async def _scheduler_loop():
     """Background loop that checks auto-scrape settings every 30s and runs if due."""
     global _last_scheduled_run

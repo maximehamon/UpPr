@@ -122,16 +122,28 @@
     <span class="config-item"><span class="status-dot" id="slack-status"></span> Slack</span>
 </div>
 
-<!-- Scrape list -->
-<section class="card">
+<!-- Scheduler status -->
+<section class="card" id="scheduler-card">
     <div class="flex-between">
-        <h2>Scrapes</h2>
+        <h2>Scheduler</h2>
         <div class="flex-gap" style="align-items:center">
             <span id="auto-scrape-status" class="muted" style="font-size:13px"></span>
             <button class="btn btn-sm" id="auto-scrape-toggle" onclick="toggleAutoScrape()" style="display:none"></button>
-            <button class="btn btn-sm" onclick="triggerAutoScrape()">Run Auto-Scrape</button>
-            <button class="btn btn-sm" onclick="clearSeenJobs()">Clear History</button>
         </div>
+    </div>
+    <div id="scheduler-details" class="muted" style="font-size:13px;margin-bottom:8px"></div>
+    <div class="flex-gap">
+        <button class="btn btn-sm" onclick="triggerAutoScrape()">Run Now</button>
+        <button class="btn btn-sm" onclick="clearSeenJobs()">Clear Seen Jobs</button>
+        <button class="btn btn-sm" onclick="clearOldScrapes()">Clear Old Scrapes (7d+)</button>
+        <button class="btn btn-sm" onclick="clearAllCompleted()" style="color:var(--danger,#ef4444)">Clear All Completed</button>
+    </div>
+</section>
+
+<!-- Scrape list -->
+<section class="card">
+    <div class="flex-between">
+        <h2>Scrapes <span id="scrapes-count" class="muted" style="font-size:13px"></span></h2>
     </div>
     <div id="scrapes-list">
         <p class="muted">Loading...</p>
@@ -321,6 +333,7 @@ async function loadScrapes() {
                             ${s.error_message ? `<span class="muted" title="${escapeHtml(s.error_message)}">error</span> ` : ''}
                             ${s.status === 'completed' ? `<button class="btn btn-sm" onclick="viewResults(${s.id})">View</button>` : ''}
                             ${s.status === 'running' || s.status === 'pending' ? `<button class="btn btn-sm" onclick="refreshScrape(${s.id})">Refresh</button>` : ''}
+                            ${s.status !== 'running' && s.status !== 'pending' ? `<button class="btn btn-sm" onclick="deleteScrape(${s.id})" title="Delete" style="color:var(--danger,#ef4444)">×</button>` : ''}
                         </td>
                     </tr>`).join('')}</tbody></table>`;
         $('#scrapes-list').innerHTML = html;
@@ -436,6 +449,45 @@ async function clearSeenJobs() {
     }
 }
 
+// --- Clear old scrapes ---
+async function clearOldScrapes() {
+    if (!confirm('Delete all completed/failed scrapes older than 7 days?')) return;
+    try {
+        const res = await api('/api/scrapes/clear-old', { method: 'POST' });
+        toast(`Deleted ${res.deleted} old scrapes`, 'success');
+        loadScrapes();
+        loadSchedulerStatus();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Clear all completed ---
+async function clearAllCompleted() {
+    if (!confirm('Delete ALL completed and failed scrapes? This cannot be undone.')) return;
+    try {
+        const res = await api('/api/scrapes/clear-all-completed', { method: 'POST' });
+        toast(`Deleted ${res.deleted} scrapes`, 'success');
+        loadScrapes();
+        loadSchedulerStatus();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
+// --- Delete single scrape ---
+async function deleteScrape(id) {
+    if (!confirm(`Delete scrape #${id}?`)) return;
+    try {
+        await api(`/api/scrapes/${id}`, { method: 'DELETE' });
+        toast(`Scrape #${id} deleted`, 'info');
+        loadScrapes();
+        loadSchedulerStatus();
+    } catch (err) {
+        toast(err.message, 'error');
+    }
+}
+
 // --- Save to Notion ---
 async function saveToNotion(scrapeId, jobIndex) {
     try {
@@ -454,35 +506,50 @@ async function saveToNotion(scrapeId, jobIndex) {
     }
 }
 
-// --- Auto-scrape status ---
+// --- Scheduler status ---
 let _autoScrapeEnabled = false;
 
-async function loadAutoScrapeStatus() {
+async function loadSchedulerStatus() {
     try {
-        const s = await api('/api/settings');
-        _autoScrapeEnabled = (s.auto_scrape_enabled || 'false') === 'true';
-        const interval = parseInt(s.auto_scrape_interval || '60');
+        const s = await api('/api/scheduler/status');
+        _autoScrapeEnabled = s.enabled;
         const statusEl = $('#auto-scrape-status');
         const toggleBtn = $('#auto-scrape-toggle');
+        const detailsEl = $('#scheduler-details');
 
         let intervalLabel;
+        const interval = s.interval_minutes;
         if (interval < 60) intervalLabel = interval + 'min';
         else if (interval === 60) intervalLabel = '1h';
         else if (interval < 1440) intervalLabel = (interval / 60) + 'h';
         else intervalLabel = '24h';
 
-        if (_autoScrapeEnabled) {
+        if (s.enabled) {
             statusEl.textContent = 'Auto-scrape: every ' + intervalLabel;
             statusEl.style.color = 'var(--success, #22c55e)';
             toggleBtn.textContent = 'Disable';
-            toggleBtn.className = 'btn btn-sm';
         } else {
             statusEl.textContent = 'Auto-scrape: off';
             statusEl.style.color = '';
             toggleBtn.textContent = 'Enable';
-            toggleBtn.className = 'btn btn-sm';
         }
         toggleBtn.style.display = '';
+
+        const parts = [];
+        if (s.keywords) parts.push('Keywords: ' + s.keywords);
+        if (s.active_scrapes > 0) parts.push(s.active_scrapes + ' active');
+        parts.push(s.total_scrapes + ' total scrapes');
+        if (s.last_run) {
+            const last = new Date(s.last_run);
+            const ago = Math.round((Date.now() - last.getTime()) / 60000);
+            parts.push('Last run: ' + (ago < 1 ? 'just now' : ago + 'min ago'));
+        }
+        if (s.next_run && s.enabled) {
+            const next = new Date(s.next_run);
+            const inMin = Math.round((next.getTime() - Date.now()) / 60000);
+            parts.push(inMin > 0 ? 'Next run: in ' + inMin + 'min' : 'Next run: due now');
+        }
+        detailsEl.textContent = parts.join(' · ');
     } catch (e) {}
 }
 
@@ -494,7 +561,7 @@ async function toggleAutoScrape() {
             body: JSON.stringify({ auto_scrape_enabled: newVal }),
         });
         toast(_autoScrapeEnabled ? 'Auto-scrape disabled' : 'Auto-scrape enabled', 'success');
-        await loadAutoScrapeStatus();
+        await loadSchedulerStatus();
     } catch (err) {
         toast(err.message, 'error');
     }
@@ -503,7 +570,8 @@ async function toggleAutoScrape() {
 // --- Init ---
 checkConfig();
 loadScrapes();
-loadAutoScrapeStatus();
+loadSchedulerStatus();
 setInterval(loadScrapes, 15000);
+setInterval(loadSchedulerStatus, 30000);
 </script>
 {% endblock %}
