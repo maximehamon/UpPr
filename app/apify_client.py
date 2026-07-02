@@ -22,7 +22,7 @@ async def start_scrape(scrape_config: dict) -> dict:
 
     # Auto-calculate pagination when not explicitly set
     if "perPage" not in config:
-        config["perPage"] = min(max_jobs, 50)
+        config["perPage"] = max(min(max_jobs, 50), 10)
     if "pagesToScrape" not in config:
         per_page = config["perPage"]
         config["pagesToScrape"] = max(

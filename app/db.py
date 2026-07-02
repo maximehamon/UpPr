@@ -69,14 +69,19 @@ async def _ensure_tables(db: aiosqlite.Connection):
             ('slack_webhook_url', '');
     """)
 
-    try:
-        cursor = await db.execute("PRAGMA table_info(proposals)")
-        columns = [row["name"] for row in await cursor.fetchall()]
-        if "template_id" not in columns:
-            await db.execute("ALTER TABLE proposals ADD COLUMN template_id TEXT")
-            await db.commit()
-    except Exception:
-        pass
+    # Migrations for columns added after initial schema
+    for table, column, col_type in [
+        ("proposals", "template_id", "TEXT"),
+        ("scrapes", "error_message", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            cursor = await db.execute(f"PRAGMA table_info({table})")
+            columns = [row["name"] for row in await cursor.fetchall()]
+            if column not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                await db.commit()
+        except Exception:
+            pass
 
 
 async def init_db():
