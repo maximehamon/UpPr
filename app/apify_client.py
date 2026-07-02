@@ -34,16 +34,21 @@ async def start_scrape(scrape_config: dict) -> dict:
     config.setdefault("maxJobAge", {"type": "HOURS", "amount": 2})
 
     input_data = config
+    logger.info(f"start_scrape: POST {APIFY_BASE_URL}/acts/{ACTOR_ID}/runs")
+    logger.info(f"start_scrape: input_data={input_data}")
+    logger.info(f"start_scrape: APIFY_API_KEY={'set (' + APIFY_API_KEY[:8] + '...)' if APIFY_API_KEY else 'MISSING'}")
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{APIFY_BASE_URL}/acts/{ACTOR_ID}/runs",
             headers=HEADERS,
             json=input_data,
         )
+        logger.info(f"start_scrape: response status={resp.status_code}")
         if resp.status_code >= 400:
             logger.error(f"Apify start_scrape HTTP {resp.status_code}: {resp.text}")
         resp.raise_for_status()
         data = resp.json()["data"]
+        logger.info(f"start_scrape: run_id={data['id']}, status={data['status']}")
         return {"run_id": data["id"], "status": data["status"]}
 
 

@@ -26,6 +26,7 @@ async def poll_scrape(
     scrape_config: dict,
 ):
     """Background task: start Apify actor, poll until done, save results, notify Slack."""
+    logger.info(f"poll_scrape {scrape_id}: started with config={json.dumps(scrape_config, default=str)}")
     try:
         await _poll_scrape_inner(scrape_id, scrape_config)
     except Exception as e:
@@ -49,11 +50,14 @@ async def _poll_scrape_inner(
     keywords = []
     if scrape_config.get("query"):
         keywords = [scrape_config["query"]]
+    logger.info(f"_poll_scrape_inner {scrape_id}: max_jobs={max_jobs}, keywords={keywords}")
 
     # Start the Apify run
     try:
+        logger.info(f"_poll_scrape_inner {scrape_id}: calling start_scrape...")
         run = await start_scrape(scrape_config)
         run_id = run["run_id"]
+        logger.info(f"_poll_scrape_inner {scrape_id}: start_scrape returned run_id={run_id}")
     except Exception as e:
         logger.error(f"poll_scrape {scrape_id}: start_scrape failed: {e}")
         async with get_db() as db:
@@ -84,6 +88,7 @@ async def _poll_scrape_inner(
             logger.warning(f"poll_scrape {scrape_id}: get_run_status failed: {e}")
             continue
 
+        logger.info(f"_poll_scrape_inner {scrape_id}: poll {elapsed}s — status={status['status']}")
         if status["status"] == "SUCCEEDED":
             succeeded = True
             break

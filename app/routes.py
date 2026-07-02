@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from app.slack_notifier import (
 from app.poller import poll_scrape
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 import os
 from jinja2 import Environment, FileSystemLoader
 from starlette.templating import _TemplateResponse as TemplateResponse
@@ -94,6 +96,10 @@ async def analytics_page(request: Request):
 
 @router.post("/api/scrapes")
 async def create_scrape(req: ScrapeRequest):
+    logger.info(f"create_scrape called: keywords={req.keywords}, max_jobs={req.max_jobs}, job_type={req.job_type}")
+    logger.info(f"create_scrape advanced: raw_url={req.raw_url}, sort={req.sort}, exp={req.experience_level}, "
+                f"age={req.max_job_age_value}{req.max_job_age_unit}, locations={req.locations}, "
+                f"filters={req.custom_filters}, pv={req.payment_verified}")
     async with get_db() as db:
         cursor = await db.execute(
             """INSERT INTO scrapes (keywords, max_jobs, job_type, status)
@@ -102,6 +108,7 @@ async def create_scrape(req: ScrapeRequest):
         )
         scrape_id = cursor.lastrowid
         await db.commit()
+    logger.info(f"create_scrape: inserted scrape #{scrape_id}")
 
     # Build Apify-compatible config dict
     scrape_config: dict = {
@@ -134,7 +141,9 @@ async def create_scrape(req: ScrapeRequest):
     if req.hourly_budget_max is not None:
         scrape_config["hourlyBudgetMax"] = req.hourly_budget_max
 
+    logger.info(f"create_scrape: scrape_config={json.dumps(scrape_config, default=str)}")
     asyncio.create_task(poll_scrape(scrape_id, scrape_config))
+    logger.info(f"create_scrape: poll_scrape task created for scrape #{scrape_id}")
     return {"scrape_id": scrape_id, "status": "pending"}
 
 
