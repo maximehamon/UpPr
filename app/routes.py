@@ -292,7 +292,7 @@ async def create_proposal(req: ProposalRequest):
             send_slack_message(
                 slack_url,
                 f"Proposal drafted for: {job_title}",
-                blocks=format_proposal_ready_blocks(job_title, budget, text[:300]),
+                blocks=format_proposal_ready_blocks(job_title, budget, text),
             )
         )
 
@@ -519,6 +519,8 @@ async def slack_interactive(payload: str = Form(None)):
 
         if action_id == "generate_proposal":
             await _handle_slack_proposal(value)
+        elif action_id == "regenerate_proposal":
+            await _handle_slack_regenerate(value)
         elif action_id == "save_to_notion":
             await _handle_slack_save_notion(value)
         elif action_id == "dismiss_job":
@@ -570,11 +572,12 @@ async def _handle_slack_proposal(value: str):
         else:
             text = await generate_proposal(job, defaults["my_role"], defaults["my_skills"], defaults["model"])
 
-        await db.execute(
+        cursor = await db.execute(
             """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used, template_id)
                VALUES (0, ?, ?, ?, ?)""",
             (json.dumps(job), text, defaults["model"], template.get("id") if template else None),
         )
+        proposal_id = cursor.lastrowid
         await db.commit()
 
         if template:
@@ -589,7 +592,80 @@ async def _handle_slack_proposal(value: str):
             blocks=format_proposal_ready_blocks(
                 job.get("title", "Untitled"),
                 job.get("budget", "Unknown") or "Unknown",
-                text[:300],
+                text,
+                scrape_id=scrape_id,
+                job_index=job_index,
+                proposal_id=proposal_id,
+            ),
+        )
+
+
+async def _handle_slack_regenerate(value: str):
+    """Regenerate a proposal from a Slack button click and send the new version."""
+    parts = value.split(":")
+    if len(parts) != 2:
+        return
+
+    scrape_id, job_index = int(parts[0]), int(parts[1])
+
+    async with get_db() as db:
+        row = await db.execute("SELECT * FROM scrapes WHERE id = ?", (scrape_id,))
+        scrape = await row.fetchone()
+        if not scrape or not scrape["results_json"]:
+            return
+
+        results = json.loads(scrape["results_json"])
+        if job_index >= len(results):
+            return
+
+        job = results[job_index]
+
+        from app.proposal_templates import select_template, record_template_outcome
+        defaults = await get_settings_bulk({
+            "ab_test_strategy": "random",
+            "my_role": "freelancer",
+            "my_skills": "",
+            "model": "openai/gpt-4o",
+        })
+
+        template = await select_template(db, strategy=defaults["ab_test_strategy"])
+
+        if template:
+            text = await generate_proposal(
+                job, defaults["my_role"], defaults["my_skills"], defaults["model"],
+                custom_system_prompt=template.get("system_prompt"),
+                custom_user_template=template.get("user_template"),
+                temperature=template.get("temperature", 0.7),
+                max_tokens=template.get("max_tokens", 600),
+            )
+        else:
+            text = await generate_proposal(job, defaults["my_role"], defaults["my_skills"], defaults["model"])
+
+        cursor = await db.execute(
+            """INSERT INTO proposals (scrape_id, job_data, proposal_text, model_used, template_id)
+               VALUES (0, ?, ?, ?, ?)""",
+            (json.dumps(job), text, defaults["model"], template.get("id") if template else None),
+        )
+        proposal_id = cursor.lastrowid
+        await db.commit()
+
+        if template:
+            await record_template_outcome(db, template["id"], "sent")
+
+    slack_url = await get_setting("slack_webhook_url", "")
+    if slack_url:
+        from app.slack_notifier import format_proposal_ready_blocks
+        await send_slack_message(
+            slack_url,
+            f"Proposal regenerated for: {job.get('title', 'Untitled')}",
+            blocks=format_proposal_ready_blocks(
+                job.get("title", "Untitled"),
+                job.get("budget", "Unknown") or "Unknown",
+                text,
+                scrape_id=scrape_id,
+                job_index=job_index,
+                proposal_id=proposal_id,
+                header_text="Proposal Regenerated",
             ),
         )
 

@@ -251,16 +251,25 @@ def format_job_alert_blocks(
 def format_proposal_ready_blocks(
     job_title: str,
     budget: str,
-    preview: str,
+    proposal_text: str,
     app_url: str = "",
+    scrape_id: int = 0,
+    job_index: int = 0,
+    proposal_id: int = 0,
+    header_text: str = "Proposal Drafted",
 ) -> list[dict]:
-    """Slack Block Kit for a new proposal being ready."""
+    """Slack Block Kit for a new proposal being ready.
+
+    The full proposal text is included in code blocks for easy copying.
+    If the text exceeds Slack's 3000-char block limit, it is split across
+    multiple section blocks.
+    """
     blocks = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "✍️ Proposal Drafted",
+                "text": f"✍️ {header_text}",
             },
         },
         {
@@ -276,28 +285,48 @@ def format_proposal_ready_blocks(
                 },
             ],
         },
-        {
+    ]
+
+    # Split full proposal into code blocks that fit Slack's 3000-char limit.
+    # Reserve room for the ``` delimiters (6 chars) + some margin.
+    escaped = _escape_slack(proposal_text)
+    max_chunk = 2900
+    chunks = [escaped[i:i + max_chunk] for i in range(0, len(escaped), max_chunk)]
+
+    for chunk in chunks:
+        blocks.append({
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"```{_escape_slack(preview[:300])}```",
+                "text": f"```{chunk}```",
             },
-        },
-    ]
+        })
+
+    # Action buttons
+    action_value = f"{scrape_id}:{job_index}"
+    actions = []
+
+    actions.append({
+        "type": "button",
+        "text": {"type": "plain_text", "text": "🔄 Regenerate"},
+        "action_id": "regenerate_proposal",
+        "value": action_value,
+    })
+    actions.append({
+        "type": "button",
+        "text": {"type": "plain_text", "text": "📋 Save to Notion"},
+        "action_id": "save_to_notion",
+        "value": action_value,
+    })
 
     if app_url:
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "View Proposal"},
-                        "url": app_url,
-                    }
-                ],
-            }
-        )
+        actions.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "🔗 View in App"},
+            "url": app_url,
+        })
+
+    blocks.append({"type": "actions", "elements": actions})
 
     return blocks
 
