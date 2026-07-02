@@ -37,7 +37,7 @@ async def get_run_status(run_id: str) -> dict:
     """Get current status of an actor run."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(
-            f"{APIFY_BASE_URL}/acts/{ACTOR_ID}/runs/{run_id}", headers=HEADERS
+            f"{APIFY_BASE_URL}/actor-runs/{run_id}", headers=HEADERS
         )
         if resp.status_code >= 400:
             logger.error(f"Apify get_run_status HTTP {resp.status_code}: {resp.text}")
@@ -54,7 +54,7 @@ async def fetch_dataset(run_id: str, limit: int = 200) -> list[dict]:
     """Fetch all items from the run's default dataset."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(
-            f"{APIFY_BASE_URL}/acts/{ACTOR_ID}/runs/{run_id}/dataset/items"
+            f"{APIFY_BASE_URL}/actor-runs/{run_id}/dataset/items"
             f"?limit={limit}",
             headers=HEADERS,
         )
