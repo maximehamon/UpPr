@@ -81,6 +81,25 @@
 </section>
 
 <section class="card">
+    <h2>OpenCode Go (Job Scoring AI)</h2>
+    <p class="muted">Powers LLM-based job scoring using DeepSeek V4 Flash. Without an API key, jobs are scored with a basic formula.</p>
+    <div class="form-group">
+        <label for="opencode-go-api-key">OpenCode Go API Key</label>
+        <input type="password" id="opencode-go-api-key" placeholder="sk-...">
+        <small class="muted">Get one at <a href="https://opencode.ai" target="_blank">opencode.ai</a></small>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Upwork Profile</h2>
+    <p class="muted">Paste your Upwork profile summary, skills, and work history. The AI scorer uses this to judge how well each job fits you.</p>
+    <div class="form-group">
+        <label for="upwork-profile">Profile Description</label>
+        <textarea id="upwork-profile" rows="8" placeholder="Paste your Upwork profile here — title, overview, top skills, notable projects, hourly rate, etc."></textarea>
+    </div>
+</section>
+
+<section class="card">
     <h2>Job Quality Scoring</h2>
     <p class="muted">Set minimum thresholds to filter out low-quality jobs. Jobs are scored 0-100 based on budget, client history, and competition.</p>
     <div class="form-row">
@@ -109,9 +128,14 @@
         <small class="muted">Get one at <a href="https://notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></small>
     </div>
     <div class="form-group">
-        <label for="notion-database-id">Notion Database ID</label>
+        <label for="notion-database-id">Notion Database ID (Jobs)</label>
         <input type="text" id="notion-database-id" placeholder="a1b2c3d4e5f6...">
         <small class="muted">Copy from the database URL: notion.so/workspace/<strong>a1b2c3d4e5f6...</strong></small>
+    </div>
+    <div class="form-group">
+        <label for="notion-templates-database-id">Notion Templates Database ID</label>
+        <input type="text" id="notion-templates-database-id" placeholder="a1b2c3d4e5f6...">
+        <small class="muted">Database with proposal templates (Name, System Prompt, User Template, Criteria, Temperature, Max Tokens, Active).</small>
     </div>
 </section>
 
@@ -169,8 +193,11 @@ async function loadSettings() {
         $('#instant-alert-threshold').value = s.instant_alert_threshold || '75';
         $('#notion-api-key').value = s.notion_api_key || '';
         $('#notion-database-id').value = s.notion_database_id || '';
+        $('#notion-templates-database-id').value = s.notion_templates_database_id || '';
         $('#app-base-url').value = s.app_base_url || 'http://localhost:8000';
         $('#ab-test-strategy').value = s.ab_test_strategy || 'random';
+        $('#opencode-go-api-key').value = s.opencode_go_api_key || '';
+        $('#upwork-profile').value = s.upwork_profile || '';
     } catch (err) {
         toast('Failed to load settings: ' + err.message, 'error');
     }
@@ -195,8 +222,11 @@ async function saveSettings() {
                 instant_alert_threshold: $('#instant-alert-threshold').value,
                 notion_api_key: $('#notion-api-key').value,
                 notion_database_id: $('#notion-database-id').value,
+                notion_templates_database_id: $('#notion-templates-database-id').value,
                 app_base_url: $('#app-base-url').value,
                 ab_test_strategy: $('#ab-test-strategy').value,
+                opencode_go_api_key: $('#opencode-go-api-key').value,
+                upwork_profile: $('#upwork-profile').value,
             }),
         });
         const s = $('#save-status');

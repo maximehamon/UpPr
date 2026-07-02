@@ -59,7 +59,7 @@ async def is_configured() -> bool:
     return bool(api_key and db_id)
 
 
-async def save_job_to_notion(job: dict, score: int, scrape_id: int) -> str | None:
+async def save_job_to_notion(job: dict, score: int, scrape_id: int, score_details: dict | None = None) -> str | None:
     """Save a job to Notion. Returns the page ID or None on failure.
 
     The Notion database should have these properties:
@@ -111,17 +111,55 @@ async def save_job_to_notion(job: dict, score: int, scrape_id: int) -> str | Non
             },
         }
 
-        # Add description as a page body (first 1000 chars)
+        # Build page body blocks
+        children = []
+        # Job description (first 1000 chars)
         desc = (job.get("description", "") or "")[:1000]
-        children = [
-            {
+        if desc:
+            children.append({
                 "object": "block",
                 "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [{"text": {"content": desc}}]
-                }
-            }
-        ] if desc else []
+                "paragraph": {"rich_text": [{"text": {"content": desc}}]}
+            })
+
+        # AI Score Analysis
+        if score_details and score_details.get("reasoning"):
+            children.append({
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {"rich_text": [{"text": {"content": "AI Score Analysis"}}]}
+            })
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"text": {"content": score_details["reasoning"]}}]}
+            })
+
+            # Score breakdown
+            breakdown = (
+                f"Profile Fit: {score_details.get('profile_fit', 'N/A')}/25 | "
+                f"Client: {score_details.get('client_quality', 'N/A')}/25 | "
+                f"Budget: {score_details.get('budget_score', 'N/A')}/25 | "
+                f"Competition: {score_details.get('competition', 'N/A')}/25"
+            )
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"text": {"content": breakdown}}]}
+            })
+
+            for h in score_details.get("highlights", []):
+                children.append({
+                    "object": "block",
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": [{"text": {"content": f"✅ {h}"}}]}
+                })
+            for rf in score_details.get("red_flags", []):
+                children.append({
+                    "object": "block",
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": [{"text": {"content": f"⚠️ {rf}"}}]}
+                })
 
         page = client.pages.create(
             parent={"database_id": database_id},

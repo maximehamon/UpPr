@@ -159,18 +159,25 @@ def format_job_alert_blocks(
     else:
         score_emoji = "🔴"
 
-    # Score details text
+    # Score details text — supports both LLM and basic scorer formats
     score_parts = []
-    if score_details.get("payment_verified"):
-        score_parts.append("✅ Payment Verified")
-    if score_details.get("good_budget"):
-        score_parts.append("💰 Good Budget")
-    if score_details.get("good_client"):
-        score_parts.append("👍 Good Client")
-    if score_details.get("low_competition"):
-        score_parts.append("🎯 Low Competition")
-    if score_details.get("red_flags"):
-        for rf in score_details["red_flags"]:
+    if score_details.get("scorer") == "llm":
+        if score_details.get("reasoning"):
+            score_parts.append(score_details["reasoning"])
+        for h in score_details.get("highlights", []):
+            score_parts.append(f"✅ {h}")
+        for rf in score_details.get("red_flags", []):
+            score_parts.append(f"⚠️ {rf}")
+    else:
+        if score_details.get("payment_verified"):
+            score_parts.append("✅ Payment Verified")
+        if score_details.get("good_budget"):
+            score_parts.append("💰 Good Budget")
+        if score_details.get("good_client"):
+            score_parts.append("👍 Good Client")
+        if score_details.get("low_competition"):
+            score_parts.append("🎯 Low Competition")
+        for rf in score_details.get("red_flags", []):
             score_parts.append(f"⚠️ {rf}")
 
     score_text = "\n".join(score_parts) if score_parts else "No special signals"

@@ -6,7 +6,12 @@ load_dotenv()
 # ── API keys ──────────────────────────────────────────────────────────
 APIFY_API_KEY = os.getenv("APIFY_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENCODE_GO_API_KEY = os.getenv("OPENCODE_GO_API_KEY", "")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+
+# ── OpenCode Go (job scoring) ────────────────────────────────────────
+OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1"
+SCORING_MODEL = "deepseek-v4-flash"
 
 # ── App ───────────────────────────────────────────────────────────────
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")

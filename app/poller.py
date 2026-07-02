@@ -139,7 +139,9 @@ async def _poll_scrape_inner(
         score_settings = await get_settings_bulk({
             "min_budget": "0",
             "min_hourly_rate": "0",
+            "upwork_profile": "",
         })
+        upwork_profile = score_settings.get("upwork_profile", "")
         score_cfg = {
             "min_budget": int(score_settings["min_budget"]),
             "min_hourly_rate": int(score_settings["min_hourly_rate"]),
@@ -147,7 +149,7 @@ async def _poll_scrape_inner(
 
         scored_jobs = []
         for job in new_results:
-            score, details = score_job(job, score_cfg)
+            score, details = await score_job(job, upwork_profile=upwork_profile, settings=score_cfg)
             job["_score"] = score
             job["_score_details"] = details
             scored_jobs.append(job)
@@ -160,7 +162,16 @@ async def _poll_scrape_inner(
         )
         await db.commit()
 
-    # Smart alerts
+    # Auto-save all jobs to Notion
+    from app.notion_sync import save_job_to_notion, is_configured as notion_configured
+    if await notion_configured():
+        for i, job in enumerate(scored_jobs):
+            try:
+                await save_job_to_notion(job, job.get("_score", 0), scrape_id, score_details=job.get("_score_details"))
+            except Exception as e:
+                logger.warning(f"poll_scrape {scrape_id}: Notion save failed for job {i}: {e}")
+
+    # Smart alerts — only high-scoring jobs get individual Slack messages
     alert_settings = await get_settings_bulk({
         "slack_webhook_url": "",
         "instant_alert_threshold": "75",
@@ -169,19 +180,25 @@ async def _poll_scrape_inner(
     slack_url = alert_settings["slack_webhook_url"]
 
     if slack_url:
-        for i, job in enumerate(scored_jobs[:10]):
+        instant_threshold = int(alert_settings["instant_alert_threshold"])
+        high_jobs = [j for j in scored_jobs if j.get("_score", 0) >= instant_threshold]
+
+        # Send individual alerts only for high-scoring jobs
+        for i, job in enumerate(high_jobs[:10]):
             text, blocks = format_job_alert_blocks(
                 job, job["_score"], job.get("_score_details", {}),
-                scrape_id, i, app_url=alert_settings["app_base_url"],
+                scrape_id, scored_jobs.index(job), app_url=alert_settings["app_base_url"],
             )
             await send_slack_message(slack_url, text, blocks=blocks)
 
+        # Always send summary
         keyword_str = ", ".join(keywords[:3])
         if len(keywords) > 3:
             keyword_str += f" +{len(keywords) - 3} more"
 
         if len(scored_jobs) > 0:
-            summary_text = f"{len(scored_jobs)} new jobs for [{keyword_str}]"
+            notion_note = " (all saved to Notion)" if await notion_configured() else ""
+            summary_text = f"{len(scored_jobs)} new jobs{notion_note} — {len(high_jobs)} above alert threshold"
             summary_blocks = format_scrape_complete_blocks(keywords, len(scored_jobs), len(results))
             await send_slack_message(slack_url, summary_text, blocks=summary_blocks)
         else:

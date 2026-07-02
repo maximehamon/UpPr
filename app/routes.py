@@ -66,8 +66,11 @@ class SettingsUpdate(BaseModel):
     instant_alert_threshold: str | None = None
     notion_api_key: str | None = None
     notion_database_id: str | None = None
+    notion_templates_database_id: str | None = None
     app_base_url: str | None = None
     ab_test_strategy: str | None = None
+    opencode_go_api_key: str | None = None
+    upwork_profile: str | None = None
 
 
 # ── Page routes ───────────────────────────────────────────────────────
@@ -237,13 +240,12 @@ async def refresh_scrape(scrape_id: int):
 @router.post("/api/proposals")
 async def create_proposal(req: ProposalRequest):
     from app.config import OPENROUTER_API_KEY
-    from app.proposal_templates import select_template, record_template_outcome
+    from app.proposal_templates import select_template_for_job
 
     defaults = await get_settings_bulk({
         "my_role": "freelancer",
         "my_skills": "",
         "model": "openai/gpt-4o",
-        "ab_test_strategy": "random",
     })
 
     my_role = req.my_role or defaults["my_role"]
@@ -253,8 +255,7 @@ async def create_proposal(req: ProposalRequest):
     if not OPENROUTER_API_KEY:
         raise HTTPException(400, "OPENROUTER_API_KEY not configured")
 
-    async with get_db() as db:
-        template = await select_template(db, strategy=defaults["ab_test_strategy"])
+    template = await select_template_for_job(req.job_data)
 
     try:
         if template:
@@ -277,10 +278,6 @@ async def create_proposal(req: ProposalRequest):
             (json.dumps(req.job_data), text, model, template.get("id") if template else None),
         )
         proposal_id = cursor.lastrowid
-
-        if template:
-            await record_template_outcome(db, template["id"], "sent")
-
         await db.commit()
 
     slack_url = await get_setting("slack_webhook_url", "")
@@ -357,8 +354,11 @@ _SETTINGS_DEFAULTS = {
     "instant_alert_threshold": "75",
     "notion_api_key": "",
     "notion_database_id": "",
+    "notion_templates_database_id": "",
     "app_base_url": "http://localhost:8000",
     "ab_test_strategy": "random",
+    "opencode_go_api_key": "",
+    "upwork_profile": "",
 }
 
 
@@ -551,15 +551,14 @@ async def _handle_slack_proposal(value: str):
 
         job = results[job_index]
 
-        from app.proposal_templates import select_template, record_template_outcome
+        from app.proposal_templates import select_template_for_job
         defaults = await get_settings_bulk({
-            "ab_test_strategy": "random",
             "my_role": "freelancer",
             "my_skills": "",
             "model": "openai/gpt-4o",
         })
 
-        template = await select_template(db, strategy=defaults["ab_test_strategy"])
+        template = await select_template_for_job(job)
 
         if template:
             text = await generate_proposal(
@@ -579,9 +578,6 @@ async def _handle_slack_proposal(value: str):
         )
         proposal_id = cursor.lastrowid
         await db.commit()
-
-        if template:
-            await record_template_outcome(db, template["id"], "sent")
 
     slack_url = await get_setting("slack_webhook_url", "")
     if slack_url:
@@ -620,15 +616,14 @@ async def _handle_slack_regenerate(value: str):
 
         job = results[job_index]
 
-        from app.proposal_templates import select_template, record_template_outcome
+        from app.proposal_templates import select_template_for_job
         defaults = await get_settings_bulk({
-            "ab_test_strategy": "random",
             "my_role": "freelancer",
             "my_skills": "",
             "model": "openai/gpt-4o",
         })
 
-        template = await select_template(db, strategy=defaults["ab_test_strategy"])
+        template = await select_template_for_job(job)
 
         if template:
             text = await generate_proposal(
@@ -648,9 +643,6 @@ async def _handle_slack_regenerate(value: str):
         )
         proposal_id = cursor.lastrowid
         await db.commit()
-
-        if template:
-            await record_template_outcome(db, template["id"], "sent")
 
     slack_url = await get_setting("slack_webhook_url", "")
     if slack_url:
