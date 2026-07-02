@@ -130,15 +130,25 @@ async def _score_job_llm(
         resp.raise_for_status()
 
     data = resp.json()
-    raw_text = data["choices"][0]["message"]["content"]
+    message = data["choices"][0]["message"]
+    raw_text = message.get("content") or ""
+
+    # Some DeepSeek models put reasoning in a separate field and leave content empty
+    if not raw_text.strip() and message.get("reasoning_content"):
+        raw_text = message["reasoning_content"]
+
+    logger.debug("LLM raw response (%d chars): %s", len(raw_text), raw_text[:300])
 
     # Strip <think>...</think> tags (DeepSeek reasoning)
-    raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    # If stripping removed everything, the JSON was inside the think block
+    if not cleaned:
+        cleaned = raw_text
 
     # Extract JSON from possible markdown fences
-    json_match = re.search(r"\{.*\}", raw_text, flags=re.DOTALL)
+    json_match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if not json_match:
-        raise ValueError(f"No JSON object found in LLM response: {raw_text[:200]}")
+        raise ValueError(f"No JSON object found in LLM response: {cleaned[:300]}")
 
     result = json.loads(json_match.group())
 
