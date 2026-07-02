@@ -12,11 +12,13 @@ async def start_scrape(
     keywords: list[str], max_jobs: int = 50, job_type: str = "hourly"
 ) -> dict:
     """Start an Apify actor run. Returns {run_id, status}."""
+    per_page = min(max_jobs, 50)
+    pages = min(max_jobs // per_page + (1 if max_jobs % per_page else 0), 10)
     input_data = {
         "query": keywords[0] if keywords else "",
         "jobType": [job_type],
-        "pagesToScrape": min(max_jobs // 50 + 1, 10),
-        "perPage": 50,
+        "pagesToScrape": max(pages, 1),
+        "perPage": per_page,
         "sort": "newest",
         "maxJobAge": {"type": "HOURS", "amount": 2},
     }

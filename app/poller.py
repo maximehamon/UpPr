@@ -72,6 +72,7 @@ async def _poll_scrape_inner(
 
     # Poll until done
     elapsed = 0
+    succeeded = False
     while elapsed < MAX_WAIT:
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
@@ -83,6 +84,7 @@ async def _poll_scrape_inner(
             continue
 
         if status["status"] == "SUCCEEDED":
+            succeeded = True
             break
         elif status["status"] in ("FAILED", "ABORTED", "TIMED-OUT"):
             async with get_db() as db:
@@ -92,9 +94,19 @@ async def _poll_scrape_inner(
                 await db.commit()
             return
 
+    if not succeeded:
+        logger.error(f"poll_scrape {scrape_id}: timed out after {MAX_WAIT}s")
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE scrapes SET status='failed', error_message=? WHERE id=?",
+                (f"Timed out after {MAX_WAIT}s waiting for Apify run", scrape_id),
+            )
+            await db.commit()
+        return
+
     # Fetch results
     try:
-        results = await fetch_dataset(run_id)
+        results = await fetch_dataset(run_id, limit=max_jobs)
     except Exception as e:
         logger.error(f"poll_scrape {scrape_id}: fetch_dataset failed: {e}")
         results = []
