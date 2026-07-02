@@ -532,6 +532,62 @@ async def save_job_to_notion(scrape_id: int, job_index: int):
         raise HTTPException(502, "Failed to save to Notion")
 
 
+@router.get("/api/notion/generate-proposal", response_class=HTMLResponse)
+async def generate_proposal_from_notion(page_id: str):
+    """Read a job from Notion, generate a proposal, and write it back to the page."""
+    from app.notion_sync import read_job_from_notion, write_proposal_to_notion
+
+    job = await read_job_from_notion(page_id)
+    if not job:
+        return HTMLResponse(
+            "<html><body><h2>Error</h2><p>Could not read job from Notion. Check the page ID and permissions.</p></body></html>",
+            status_code=404,
+        )
+
+    from app.proposal_templates import select_template_for_job
+    template = await select_template_for_job(job)
+
+    system_prompt = template.get("system_prompt") if template else None
+    user_template = template.get("user_template") if template else None
+    temperature = float(template.get("temperature", 0.7)) if template else 0.7
+    max_tokens = int(template.get("max_tokens", 600)) if template else 600
+
+    settings = await get_settings_bulk({"my_role": "freelancer", "my_skills": ""})
+
+    try:
+        proposal = await generate_proposal(
+            job,
+            my_role=settings.get("my_role", "freelancer"),
+            my_skills=settings.get("my_skills", ""),
+            custom_system_prompt=system_prompt,
+            custom_user_template=user_template,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as e:
+        logger.exception("Proposal generation failed for Notion page %s", page_id)
+        return HTMLResponse(
+            f"<html><body><h2>Error</h2><p>Proposal generation failed: {e}</p></body></html>",
+            status_code=500,
+        )
+
+    ok = await write_proposal_to_notion(page_id, proposal)
+    if not ok:
+        return HTMLResponse(
+            "<html><body><h2>Error</h2><p>Generated proposal but failed to write it back to Notion.</p></body></html>",
+            status_code=502,
+        )
+
+    title = job.get("title", "Unknown Job")
+    return HTMLResponse(f"""\
+<html><body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:20px">
+<h2>Proposal Generated</h2>
+<p>A proposal for <strong>{title}</strong> has been written to the Notion page.</p>
+<p>The page status has been updated to <em>Proposal Drafted</em>.</p>
+<p><a href="https://notion.so/{page_id.replace('-', '')}">Open in Notion</a></p>
+</body></html>""")
+
+
 # ── Proposal Templates ────────────────────────────────────────────────
 
 

@@ -176,6 +176,98 @@ async def save_job_to_notion(job: dict, score: int, scrape_id: int, score_detail
         return None
 
 
+async def read_job_from_notion(page_id: str) -> dict | None:
+    """Read a job's properties from a Notion page. Returns a dict compatible with proposal generation."""
+    api_key, _ = await _get_settings_from_db()
+    if not api_key:
+        return None
+
+    try:
+        client = _get_notion_client(api_key)
+        page = client.pages.retrieve(page_id=page_id)
+        props = page.get("properties", {})
+
+        def _rich_text(prop):
+            return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
+
+        def _title(prop):
+            return "".join(t.get("plain_text", "") for t in prop.get("title", []))
+
+        # Read page body blocks for description
+        blocks = client.blocks.children.list(block_id=page_id)
+        description = ""
+        for block in blocks.get("results", []):
+            btype = block.get("type", "")
+            if btype == "paragraph":
+                text = "".join(t.get("plain_text", "") for t in block.get("paragraph", {}).get("rich_text", []))
+                if text and "AI Score Analysis" not in text and "Profile Fit:" not in text:
+                    description += text + "\n"
+            if len(description) > 1500:
+                break
+
+        return {
+            "title": _title(props.get("Title", {})),
+            "url": props.get("URL", {}).get("url", ""),
+            "budget": _rich_text(props.get("Budget", {})),
+            "jobType": props.get("Job Type", {}).get("select", {}).get("name", ""),
+            "clientCountry": _rich_text(props.get("Client Country", {})),
+            "description": description.strip(),
+            "_score": props.get("Score", {}).get("number", 0),
+        }
+    except Exception as e:
+        logger.error(f"Failed to read job from Notion page {page_id}: {e}")
+        return None
+
+
+async def write_proposal_to_notion(page_id: str, proposal_text: str) -> bool:
+    """Append a proposal as blocks to a Notion page."""
+    api_key, _ = await _get_settings_from_db()
+    if not api_key:
+        return False
+
+    try:
+        client = _get_notion_client(api_key)
+
+        children = [
+            {
+                "object": "block",
+                "type": "divider",
+                "divider": {},
+            },
+            {
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {"rich_text": [{"text": {"content": "Generated Proposal"}}]},
+            },
+        ]
+
+        # Notion blocks have a 2000-char limit per rich_text element
+        for i in range(0, len(proposal_text), 1900):
+            chunk = proposal_text[i:i + 1900]
+            children.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"text": {"content": chunk}}]},
+            })
+
+        client.blocks.children.append(block_id=page_id, children=children)
+
+        # Update status to "Proposal Drafted"
+        try:
+            client.pages.update(
+                page_id=page_id,
+                properties={"Status": {"select": {"name": "Proposal Drafted"}}},
+            )
+        except Exception:
+            pass
+
+        logger.info(f"Wrote proposal to Notion page {page_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write proposal to Notion page {page_id}: {e}")
+        return False
+
+
 async def check_duplicate_in_notion(url: str) -> bool:
     """Check if a job URL already exists in the Notion database."""
     if not await is_configured():

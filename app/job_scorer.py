@@ -131,24 +131,29 @@ async def _score_job_llm(
 
     data = resp.json()
     message = data["choices"][0]["message"]
-    raw_text = message.get("content") or ""
+    content_text = message.get("content") or ""
+    reasoning_text = message.get("reasoning_content") or ""
 
-    # Some DeepSeek models put reasoning in a separate field and leave content empty
-    if not raw_text.strip() and message.get("reasoning_content"):
-        raw_text = message["reasoning_content"]
+    logger.debug(
+        "LLM response: content=%d chars, reasoning=%d chars",
+        len(content_text), len(reasoning_text),
+    )
 
-    logger.debug("LLM raw response (%d chars): %s", len(raw_text), raw_text[:300])
+    # Search both fields for JSON — try content first, then reasoning
+    json_match = None
+    for raw in [content_text, reasoning_text]:
+        if not raw.strip():
+            continue
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        if not cleaned:
+            cleaned = raw
+        json_match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if json_match:
+            break
 
-    # Strip <think>...</think> tags (DeepSeek reasoning)
-    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
-    # If stripping removed everything, the JSON was inside the think block
-    if not cleaned:
-        cleaned = raw_text
-
-    # Extract JSON from possible markdown fences
-    json_match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if not json_match:
-        raise ValueError(f"No JSON object found in LLM response: {cleaned[:300]}")
+        preview = (content_text or reasoning_text)[:300]
+        raise ValueError(f"No JSON object found in LLM response: {preview}")
 
     result = json.loads(json_match.group())
 
