@@ -28,6 +28,18 @@ class ScrapeRequest(BaseModel):
     keywords: list[str]
     max_jobs: int = 50
     job_type: str = "hourly"
+    raw_url: str | None = None
+    sort: str = "newest"
+    experience_level: list[str] | None = None
+    max_job_age_value: int | None = None
+    max_job_age_unit: str = "HOURS"
+    custom_filters: list[dict] | None = None
+    locations: list[str] | None = None
+    payment_verified: bool | None = None
+    budget_min: int | None = None
+    budget_max: int | None = None
+    hourly_budget_min: int | None = None
+    hourly_budget_max: int | None = None
 
 
 class ProposalRequest(BaseModel):
@@ -91,7 +103,38 @@ async def create_scrape(req: ScrapeRequest):
         scrape_id = cursor.lastrowid
         await db.commit()
 
-    asyncio.create_task(poll_scrape(scrape_id, req.keywords, req.max_jobs, req.job_type))
+    # Build Apify-compatible config dict
+    scrape_config: dict = {
+        "query": req.keywords[0] if req.keywords else "",
+        "jobType": [req.job_type],
+        "max_jobs": req.max_jobs,
+        "sort": req.sort,
+    }
+    if req.raw_url:
+        scrape_config["rawUrl"] = req.raw_url
+    if req.experience_level:
+        scrape_config["experienceLevel"] = req.experience_level
+    if req.max_job_age_value is not None:
+        scrape_config["maxJobAge"] = {
+            "type": req.max_job_age_unit,
+            "amount": req.max_job_age_value,
+        }
+    if req.custom_filters:
+        scrape_config["customFilters"] = req.custom_filters
+    if req.locations:
+        scrape_config["locations"] = req.locations
+    if req.payment_verified is not None:
+        scrape_config["paymentVerified"] = req.payment_verified
+    if req.budget_min is not None:
+        scrape_config["budgetMin"] = req.budget_min
+    if req.budget_max is not None:
+        scrape_config["budgetMax"] = req.budget_max
+    if req.hourly_budget_min is not None:
+        scrape_config["hourlyBudgetMin"] = req.hourly_budget_min
+    if req.hourly_budget_max is not None:
+        scrape_config["hourlyBudgetMax"] = req.hourly_budget_max
+
+    asyncio.create_task(poll_scrape(scrape_id, scrape_config))
     return {"scrape_id": scrape_id, "status": "pending"}
 
 

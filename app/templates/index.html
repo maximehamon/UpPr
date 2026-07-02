@@ -26,6 +26,91 @@
                 </select>
             </div>
         </div>
+
+        <!-- Advanced Options Toggle -->
+        <button type="button" class="btn btn-sm" id="advanced-toggle" onclick="toggleAdvanced()" style="margin-bottom:12px">
+            Show Advanced Options
+        </button>
+
+        <div id="advanced-options" style="display:none">
+            <div class="form-group">
+                <label for="raw-url">Raw Upwork URL <span class="muted">(overrides keywords)</span></label>
+                <input type="text" id="raw-url" placeholder="https://www.upwork.com/nx/search/jobs/?q=...">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="sort">Sort By</label>
+                    <select id="sort">
+                        <option value="newest">Newest</option>
+                        <option value="relevance">Relevance</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Experience Level</label>
+                    <div style="display:flex;gap:12px;padding-top:4px">
+                        <label style="font-weight:normal;font-size:13px"><input type="checkbox" value="entry" class="exp-level"> Entry</label>
+                        <label style="font-weight:normal;font-size:13px"><input type="checkbox" value="intermediate" class="exp-level"> Intermediate</label>
+                        <label style="font-weight:normal;font-size:13px"><input type="checkbox" value="expert" class="exp-level"> Expert</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="max-age-value">Max Job Age</label>
+                    <input type="number" id="max-age-value" placeholder="e.g. 2" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="max-age-unit">Unit</label>
+                    <select id="max-age-unit">
+                        <option value="HOURS" selected>Hours</option>
+                        <option value="MINUTES">Minutes</option>
+                        <option value="DAYS">Days</option>
+                        <option value="WEEKS">Weeks</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="budget-min">Fixed Budget Min ($)</label>
+                    <input type="number" id="budget-min" placeholder="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="budget-max">Fixed Budget Max ($)</label>
+                    <input type="number" id="budget-max" placeholder="Any" min="0">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="hourly-min">Hourly Rate Min ($/hr)</label>
+                    <input type="number" id="hourly-min" placeholder="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="hourly-max">Hourly Rate Max ($/hr)</label>
+                    <input type="number" id="hourly-max" placeholder="Any" min="0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="locations">Locations <span class="muted">(comma-separated)</span></label>
+                <input type="text" id="locations" placeholder="United States, United Kingdom, Canada">
+            </div>
+
+            <div class="form-group">
+                <label style="font-weight:normal;font-size:13px"><input type="checkbox" id="payment-verified"> Payment Verified Only</label>
+            </div>
+
+            <!-- Custom Filters -->
+            <div class="form-group">
+                <label>Custom Filters</label>
+                <div id="custom-filters-list"></div>
+                <button type="button" class="btn btn-sm" onclick="addCustomFilter()">+ Add Filter</button>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" id="scrape-btn">Start Scrape</button>
     </form>
 </section>
@@ -85,11 +170,58 @@ function setDot(sel, ok) {
     el.title = ok ? 'Configured' : 'Not configured';
 }
 
+// --- Advanced options toggle ---
+function toggleAdvanced() {
+    const panel = $('#advanced-options');
+    const btn = $('#advanced-toggle');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Advanced Options';
+    } else {
+        panel.style.display = 'none';
+        btn.textContent = 'Show Advanced Options';
+    }
+}
+
+// --- Custom filters ---
+function addCustomFilter() {
+    const list = $('#custom-filters-list');
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `
+        <div class="form-group">
+            <select class="cf-key">
+                <option value="title">Title</option>
+                <option value="description">Description</option>
+                <option value="jobType">Job Type</option>
+                <option value="experienceLevel">Experience Level</option>
+                <option value="budget">Budget</option>
+                <option value="tags">Tags</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <select class="cf-op">
+                <option value="includes">includes</option>
+                <option value="equals">equals</option>
+                <option value="notIncludes">not includes</option>
+                <option value="notEquals">not equals</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <input type="text" class="cf-val" placeholder="value">
+        </div>
+        <button type="button" class="btn btn-sm" onclick="this.parentElement.remove()" style="align-self:flex-end;margin-bottom:14px">Remove</button>
+    `;
+    list.appendChild(row);
+}
+
 // --- Scrape form ---
 $('#scrape-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const raw = $('#keywords').value.trim();
-    if (!raw) return;
+    const rawUrl = $('#raw-url').value.trim();
+    if (!raw && !rawUrl) return;
 
     const keywords = raw.includes('\n')
         ? raw.split('\n').map(k => k.trim()).filter(Boolean)
@@ -98,6 +230,54 @@ $('#scrape-form').addEventListener('submit', async (e) => {
     const maxJobs = parseInt($('#max-jobs').value) || 50;
     const jobType = $('#job-type').value;
 
+    // Build request body
+    const body = { keywords: keywords.length ? keywords : [''], max_jobs: maxJobs, job_type: jobType };
+
+    // Advanced options - only include if set
+    if (rawUrl) body.raw_url = rawUrl;
+
+    const sort = $('#sort').value;
+    if (sort && sort !== 'newest') body.sort = sort;
+    else body.sort = 'newest';
+
+    const expLevels = [...document.querySelectorAll('.exp-level:checked')].map(el => el.value);
+    if (expLevels.length) body.experience_level = expLevels;
+
+    const ageVal = parseInt($('#max-age-value').value);
+    if (ageVal > 0) {
+        body.max_job_age_value = ageVal;
+        body.max_job_age_unit = $('#max-age-unit').value;
+    }
+
+    const budgetMin = parseInt($('#budget-min').value);
+    if (budgetMin > 0) body.budget_min = budgetMin;
+    const budgetMax = parseInt($('#budget-max').value);
+    if (budgetMax > 0) body.budget_max = budgetMax;
+
+    const hourlyMin = parseInt($('#hourly-min').value);
+    if (hourlyMin > 0) body.hourly_budget_min = hourlyMin;
+    const hourlyMax = parseInt($('#hourly-max').value);
+    if (hourlyMax > 0) body.hourly_budget_max = hourlyMax;
+
+    const locRaw = $('#locations').value.trim();
+    if (locRaw) body.locations = locRaw.split(',').map(l => l.trim()).filter(Boolean);
+
+    const pvCheckbox = $('#payment-verified');
+    if (pvCheckbox.checked) body.payment_verified = true;
+
+    // Custom filters
+    const filterRows = document.querySelectorAll('#custom-filters-list .form-row');
+    if (filterRows.length) {
+        const filters = [];
+        filterRows.forEach(row => {
+            const key = row.querySelector('.cf-key').value;
+            const operator = row.querySelector('.cf-op').value;
+            const value = row.querySelector('.cf-val').value.trim();
+            if (value) filters.push({ key, operator, value });
+        });
+        if (filters.length) body.custom_filters = filters;
+    }
+
     const btn = $('#scrape-btn');
     btn.disabled = true;
     btn.textContent = 'Starting...';
@@ -105,7 +285,7 @@ $('#scrape-form').addEventListener('submit', async (e) => {
     try {
         const res = await api('/api/scrapes', {
             method: 'POST',
-            body: JSON.stringify({ keywords, max_jobs: maxJobs, job_type: jobType }),
+            body: JSON.stringify(body),
         });
         toast('Scrape started! Polling in background...', 'success');
         $('#keywords').value = '';

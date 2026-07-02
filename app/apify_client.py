@@ -8,20 +8,32 @@ logger = logging.getLogger(__name__)
 HEADERS = {"Authorization": f"Bearer {APIFY_API_KEY}", "Content-Type": "application/json"}
 
 
-async def start_scrape(
-    keywords: list[str], max_jobs: int = 50, job_type: str = "hourly"
-) -> dict:
-    """Start an Apify actor run. Returns {run_id, status}."""
-    per_page = min(max_jobs, 50)
-    pages = min(max_jobs // per_page + (1 if max_jobs % per_page else 0), 10)
-    input_data = {
-        "query": keywords[0] if keywords else "",
-        "jobType": [job_type],
-        "pagesToScrape": max(pages, 1),
-        "perPage": per_page,
-        "sort": "newest",
-        "maxJobAge": {"type": "HOURS", "amount": 2},
-    }
+async def start_scrape(scrape_config: dict) -> dict:
+    """Start an Apify actor run. Returns {run_id, status}.
+
+    scrape_config keys map directly to Apify actor input.  The helper
+    auto-calculates pagesToScrape / perPage from max_jobs when they are
+    not explicitly provided.
+    """
+    config = dict(scrape_config)  # shallow copy so we don't mutate caller's dict
+
+    # Pull out the convenience max_jobs key (not an Apify field)
+    max_jobs = config.pop("max_jobs", 50)
+
+    # Auto-calculate pagination when not explicitly set
+    if "perPage" not in config:
+        config["perPage"] = min(max_jobs, 50)
+    if "pagesToScrape" not in config:
+        per_page = config["perPage"]
+        config["pagesToScrape"] = max(
+            min(max_jobs // per_page + (1 if max_jobs % per_page else 0), 10), 1
+        )
+
+    # Defaults
+    config.setdefault("sort", "newest")
+    config.setdefault("maxJobAge", {"type": "HOURS", "amount": 2})
+
+    input_data = config
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{APIFY_BASE_URL}/acts/{ACTOR_ID}/runs",
@@ -67,14 +79,12 @@ async def fetch_dataset(run_id: str, limit: int = 200) -> list[dict]:
 
 
 async def run_and_wait(
-    keywords: list[str],
-    max_jobs: int = 50,
-    job_type: str = "hourly",
+    scrape_config: dict,
     poll_interval: int = 5,
     max_wait: int = 600,
 ) -> list[dict]:
     """Start a scrape, poll until done, return results."""
-    run = await start_scrape(keywords, max_jobs, job_type)
+    run = await start_scrape(scrape_config)
     run_id = run["run_id"]
     elapsed = 0
     while elapsed < max_wait:

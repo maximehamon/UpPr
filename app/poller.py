@@ -23,13 +23,11 @@ _last_auto_scrape: datetime | None = None
 
 async def poll_scrape(
     scrape_id: int,
-    keywords: list[str],
-    max_jobs: int,
-    job_type: str,
+    scrape_config: dict,
 ):
     """Background task: start Apify actor, poll until done, save results, notify Slack."""
     try:
-        await _poll_scrape_inner(scrape_id, keywords, max_jobs, job_type)
+        await _poll_scrape_inner(scrape_id, scrape_config)
     except Exception as e:
         logger.exception(f"poll_scrape {scrape_id}: unhandled error: {e}")
         try:
@@ -45,13 +43,16 @@ async def poll_scrape(
 
 async def _poll_scrape_inner(
     scrape_id: int,
-    keywords: list[str],
-    max_jobs: int,
-    job_type: str,
+    scrape_config: dict,
 ):
+    max_jobs = scrape_config.get("max_jobs", 50)
+    keywords = []
+    if scrape_config.get("query"):
+        keywords = [scrape_config["query"]]
+
     # Start the Apify run
     try:
-        run = await start_scrape(keywords, max_jobs, job_type)
+        run = await start_scrape(scrape_config)
         run_id = run["run_id"]
     except Exception as e:
         logger.error(f"poll_scrape {scrape_id}: start_scrape failed: {e}")
@@ -219,6 +220,12 @@ async def run_hourly_scrape():
 
     logger.info(f"run_hourly_scrape: starting auto-scrape for {keywords}")
 
+    scrape_config = {
+        "query": keywords[0] if keywords else "",
+        "jobType": [job_type],
+        "max_jobs": max_jobs,
+    }
+
     async with get_db() as db:
         cursor = await db.execute(
             """INSERT INTO scrapes (keywords, max_jobs, job_type, status)
@@ -228,7 +235,7 @@ async def run_hourly_scrape():
         scrape_id = cursor.lastrowid
         await db.commit()
 
-    asyncio.create_task(poll_scrape(scrape_id, keywords, max_jobs, job_type))
+    asyncio.create_task(poll_scrape(scrape_id, scrape_config))
     logger.info(f"run_hourly_scrape: created scrape #{scrape_id}")
 
 
