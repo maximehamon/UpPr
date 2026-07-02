@@ -124,7 +124,7 @@ async def _score_job_llm(
                 "model": SCORING_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 512,
+                "max_tokens": 4096,
             },
         )
         resp.raise_for_status()
